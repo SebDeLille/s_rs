@@ -1,3 +1,4 @@
 pub mod evaluator;
 pub mod lexeme;
-pub mod interpretor;
+pub mod lexical_analyzer;
+pub mod error;

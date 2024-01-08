@@ -1,3 +1,4 @@
+#[derive(Clone, Debug)]
 pub enum LexemeType {
     ERROR,
     LPAR,
@@ -23,9 +24,10 @@ pub enum LexemeType {
     SHARP
 }
 
+#[derive(Clone)]
 pub struct Lexeme {
-    lexeme_type: LexemeType,
-    value: String,
+    pub lexeme_type: LexemeType,
+    pub value: String,
 }
 
 impl Lexeme {

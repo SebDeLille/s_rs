@@ -91,7 +91,7 @@ mod tests {
     #[test]
     fn test_chain_data_value_not_in() {
         let mother = SrsMemory::new();
-        let mut binding = Box::new(mother);
+        let binding = Box::new(mother);
         let mut mem = SrsMemory::new();
         mem.add_to(&binding);
 
