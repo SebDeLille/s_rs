@@ -20,3 +20,11 @@ impl SrsElement for SrsInteger {
     }
 }
 
+impl SrsInteger {
+    pub fn new(i: i64) -> Self {
+        SrsInteger {
+            value: i
+        }
+    }
+}
+

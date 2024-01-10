@@ -25,6 +25,14 @@ impl SrsElement for SrsList {
     }
 }
 
+impl Default for SrsList {
+    fn default() -> Self {
+        SrsList {
+            car: None,
+            cdr: None
+        }
+    }
+}
 impl SrsList {
     pub fn new(car: SrsValue, cdr: SrsValue) -> Self {
         SrsList {
