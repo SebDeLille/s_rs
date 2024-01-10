@@ -1,24 +1,24 @@
 use std::any::Any;
 use crate::types::core::{SrsElement, SrsType};
 
-pub struct SrsId {
+pub struct SrsString {
     pub value: String,
 }
 
-impl SrsId {
+impl SrsString {
     pub fn new(value: String) -> Self {
-        SrsId {
+        SrsString {
             value,
         }
     }
 }
-impl SrsElement for SrsId {
+impl SrsElement for SrsString {
     fn is_list(&self) -> bool {
         false
     }
 
     fn get_type(&self) -> SrsType {
-        SrsType::ID
+        SrsType::STRING
     }
 
     fn as_any(&self) -> &dyn Any {

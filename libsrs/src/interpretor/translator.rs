@@ -1,10 +1,11 @@
 use std::slice::Iter;
-use crate::interpretor::lexeme;
 use crate::interpretor::lexeme::{Lexeme, LexemeType};
-use crate::types::core::SrsElement;
+use crate::types::core::{SrsElement, SrsValue};
 use crate::types::error::SrsError;
+use crate::types::id::SrsId;
 use crate::types::integer::SrsInteger;
 use crate::types::list::SrsList;
+use crate::types::string::SrsString;
 
 pub fn translate_all(elements: Vec<Lexeme>) -> Result<Vec<Box<dyn SrsElement>>, SrsError> {
     let mut values: Vec<Box<dyn SrsElement>> = Vec::new();
@@ -17,7 +18,7 @@ pub fn translate_all(elements: Vec<Lexeme>) -> Result<Vec<Box<dyn SrsElement>>, 
     Ok(values)
 }
 
-fn translate(it: &mut Iter<'_, Lexeme>) -> Result<Option<Box<dyn SrsElement>>, SrsError> {
+fn translate(it: &mut Iter<'_, Lexeme>) -> Result<SrsValue, SrsError> {
     while let Some(lexeme) = it.next() {
         return if lexeme.lexeme_type == LexemeType::LPAR {
             translate_list(it)
@@ -28,25 +29,24 @@ fn translate(it: &mut Iter<'_, Lexeme>) -> Result<Option<Box<dyn SrsElement>>, S
     Ok(None)
 }
 
-fn translate_list(it: &mut Iter<'_, Lexeme>) -> Result<Option<Box<dyn SrsElement>>, SrsError> {
+fn translate_list(it: &mut Iter<'_, Lexeme>) -> Result<SrsValue, SrsError> {
     let mut list = SrsList::default();
     while let Some(lexeme) = it.next() {
-        return if lexeme.lexeme_type == LexemeType::RPAR {
-            Ok(Some(Box::new(list)))
-        } else {
-            translate(it)
+        return match lexeme.lexeme_type {
+            LexemeType::LPAR => translate_list(it),
+            LexemeType::RPAR => Ok(Some(Box::new(list))),
+            _ => translate_atom(lexeme)
         }
     }
     Ok(None)
 }
 
-fn translate_atom(lexeme: &Lexeme) -> Result<Option<Box<dyn SrsElement>>, SrsError> {
+fn translate_atom(lexeme: &Lexeme) -> Result<SrsValue, SrsError> {
     match lexeme.lexeme_type {
-        LexemeType::INTEGER => {
-            let i = SrsInteger::new(lexeme.value.parse::<i64>()?);
-            Ok(Some(Box::new(i)))
-        }
-        _ => Err(SrsError{})
+        LexemeType::INTEGER => Ok(Some(Box::new(SrsInteger::new(lexeme.value.parse::<i64>()?)))),
+        LexemeType::ID => Ok(Some(Box::new(SrsId::new(lexeme.value.clone())))),
+        LexemeType::STRING => Ok(Some(Box::new(SrsString::new(lexeme.value.clone())))),
+        _ => Err(SrsError {})
     }
 }
 
@@ -79,7 +79,22 @@ mod tests {
             match result {
                 Ok(v) => {
                     assert_eq!(2, v.len());
-                    v.iter().for_each(|i| {println!("{:?}", i.get_type())});
+                    v.iter().for_each(|i| { println!("{:?}", i.get_type()) });
+                }
+                Err(_) => panic!("perdu")
+            }
+        }
+    }
+
+    #[test]
+    fn test_basic_expression() {
+        let scm = "(add 2 3)";
+        let tmp_res = get_lexemes(&scm.to_string());
+        if tmp_res.is_ok() {
+            let result = translate_all(tmp_res.unwrap());
+            match result {
+                Ok(v) => {
+                    assert_eq!(1, v.len());
                 }
                 Err(_) => panic!("perdu")
             }

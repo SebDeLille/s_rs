@@ -1,4 +1,5 @@
 use std::any::Any;
+use std::fs::read;
 use crate::types::core::{SrsElement, SrsType, SrsValue, SrsValueRef};
 use crate::types::error::SrsError;
 
@@ -48,6 +49,57 @@ impl SrsList {
     pub fn cdr(&self) -> SrsValueRef {
         self.cdr.as_ref()
     }
+
+    pub fn add_tail(&mut self, value: SrsValue) -> Result<(), SrsError> {
+        let mut list = self;
+
+        loop {
+            if list.car.is_none() {
+                list.car = value;
+                return Ok(())
+            } else if list.cdr.is_none() {
+                list.cdr = Some(Box::new(SrsList {
+                    car: value,
+                    cdr: None
+                }));
+                return Ok(())
+            } else if list.cdr.as_ref().unwrap().is_list() {
+                match list.cdr.unwrap().as_any().downcast_mut::<SrsList>() {
+                    Some(l) => list = l,
+                    None => return Err(SrsError{})
+                }
+            }
+            else {
+                return Err(SrsError{})
+            }
+        }
+    }
+
+    // public LpsList addTail(LpsElement value) throws ElementException {
+    // if (value == null) {
+    // throw new ElementException("Value cannot be null");
+    // }
+    //
+    // LpsList list = this;
+    //
+    // while (true) {
+    // if (list.car == null) {
+    // list.car = value;
+    // return this;
+    // } else if (list.cdr == null) {
+    // LpsList newList = new LpsList();
+    // newList.car = value;
+    // list.cdr = newList;
+    // return this;
+    // } else if (list.cdr instanceof LpsList listCdr) {
+    // list = listCdr;
+    // } else {
+    // throw new ElementException("AddTail must be use with a list");
+    // }
+    // }
+
+    // } /* addTail */
+
 }
 
 pub struct Iterator<'a> {
