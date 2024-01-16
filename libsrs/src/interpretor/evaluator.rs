@@ -19,7 +19,7 @@ impl Evaluator {
 
     fn eval_list(&self, list: SrsValueRef) -> Result<SrsValue, SrsError> {
         match list.unwrap().as_any().downcast_ref::<SrsList>() {
-            Some(l) => Ok(None),
+            Some(_) => Ok(None),
             None => Err(SrsError{})
         }
 
@@ -34,7 +34,7 @@ impl Evaluator {
 
     fn eval_id(&self, id: SrsValueRef) -> Result<SrsValue, SrsError> {
         match id.unwrap().as_any().downcast_ref::<SrsId>() {
-            Some(local_id) => Ok(None),
+            Some(_) => Ok(None),
             None => Err(SrsError{})
         }
     }

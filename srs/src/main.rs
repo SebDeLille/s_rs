@@ -37,11 +37,13 @@ fn main() {
     if tmp.as_ref().unwrap().is_list() {
         println!("c'est une liste");
     }
-    while it.has_next() {
-        let tmp = it.next().unwrap().unwrap();
-        println!("type: {:?}", tmp.get_type())
+
+    while let Some(tmp) = it.next() {
+        let el = tmp.unwrap();
+        println!("type: {:?}, {}", el.get_type(), el);
+
     }
 
     let e = Evaluator{};
-    let result = e.eval(tmp.as_ref());
+    let _ = e.eval(tmp.as_ref());
 }

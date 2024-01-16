@@ -293,7 +293,7 @@ mod tests {
     fn check_str2() {
         let result = get_lexemes(&"\"abcd\\\"".to_string());
         match result {
-            Ok(v) => {
+            Ok(_) => {
                 panic!("An error must be semt");
             }
             Err(_) => {}

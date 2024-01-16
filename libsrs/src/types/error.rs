@@ -4,7 +4,9 @@ use std::num::ParseIntError;
 pub struct SrsError;
 
 impl From<ParseIntError> for SrsError {
-    fn from(value: ParseIntError) -> Self {
+    fn from(_value: ParseIntError) -> Self {
         SrsError{}
     }
 }
+
+pub type SrsResult<T> = Result<T, SrsError>;

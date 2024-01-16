@@ -1,7 +1,7 @@
 use std::slice::Iter;
 use crate::interpretor::lexeme::{Lexeme, LexemeType};
 use crate::types::core::{SrsElement, SrsValue};
-use crate::types::error::SrsError;
+use crate::types::error::{SrsError, SrsResult};
 use crate::types::id::SrsId;
 use crate::types::integer::SrsInteger;
 use crate::types::list::SrsList;
@@ -18,7 +18,7 @@ pub fn translate_all(elements: Vec<Lexeme>) -> Result<Vec<Box<dyn SrsElement>>, 
     Ok(values)
 }
 
-fn translate(it: &mut Iter<'_, Lexeme>) -> Result<SrsValue, SrsError> {
+fn translate(it: &mut Iter<'_, Lexeme>) -> SrsResult<SrsValue> {
     while let Some(lexeme) = it.next() {
         return if lexeme.lexeme_type == LexemeType::LPAR {
             translate_list(it)
@@ -29,19 +29,29 @@ fn translate(it: &mut Iter<'_, Lexeme>) -> Result<SrsValue, SrsError> {
     Ok(None)
 }
 
-fn translate_list(it: &mut Iter<'_, Lexeme>) -> Result<SrsValue, SrsError> {
+fn translate_list(it: &mut Iter<'_, Lexeme>) -> SrsResult<SrsValue> {
     let mut list = SrsList::default();
     while let Some(lexeme) = it.next() {
-        return match lexeme.lexeme_type {
-            LexemeType::LPAR => translate_list(it),
-            LexemeType::RPAR => Ok(Some(Box::new(list))),
-            _ => translate_atom(lexeme)
+        match lexeme.lexeme_type {
+            LexemeType::LPAR => {
+                match translate_list(it) {
+                    Ok(v) => list.add_tail(v)?,
+                    Err(e) => return Err(e)
+                }
+            },
+            LexemeType::RPAR => return Ok(Some(Box::new(list))),
+            _ => {
+                match translate_atom(lexeme) {
+                    Ok(v) => list.add_tail(v)?,
+                    Err(e) => return Err(e)
+                }
+            }
         }
     }
-    Ok(None)
+    Err(SrsError{})
 }
 
-fn translate_atom(lexeme: &Lexeme) -> Result<SrsValue, SrsError> {
+fn translate_atom(lexeme: &Lexeme) -> SrsResult<SrsValue> {
     match lexeme.lexeme_type {
         LexemeType::INTEGER => Ok(Some(Box::new(SrsInteger::new(lexeme.value.parse::<i64>()?)))),
         LexemeType::ID => Ok(Some(Box::new(SrsId::new(lexeme.value.clone())))),
