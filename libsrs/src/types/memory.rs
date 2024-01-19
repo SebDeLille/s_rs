@@ -1,8 +1,9 @@
 use std::collections::HashMap;
+use std::rc::Rc;
 use crate::types::core::{SrsElement, SrsValue, SrsValueRef};
 
 pub struct SrsMemory<'a> {
-    memory: HashMap<String, Box<dyn SrsElement>>,
+    memory: HashMap<String, Rc<dyn SrsElement>>,
     mother: Option<&'a Box<SrsMemory<'a>>>
 }
 
@@ -20,10 +21,10 @@ impl<'a> SrsMemory<'a> {
         }
     }
 
-    pub fn get(&self, key: &String) -> SrsValueRef {
+    pub fn get(&self, key: &String) -> Option<&Rc<dyn  SrsElement>> {
         let v = self.memory.get(key);
         if v.is_some() {
-            v
+            v.clone()
         } else if self.mother.is_some() {
             self.mother.as_ref().unwrap().get(key)
         } else {
@@ -31,13 +32,14 @@ impl<'a> SrsMemory<'a> {
         }
     }
 
-    pub fn add(&mut self, key: String, value: SrsValue) {
-        self.memory.insert(key.clone(), value.unwrap());
+    pub fn add(&mut self, key: String, value: Rc<dyn SrsElement>) {
+        self.memory.insert(key.clone(), value);
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::rc::Rc;
     use crate::types::core::SrsElement;
     use crate::types::integer::SrsInteger;
     use crate::types::memory::SrsMemory;
@@ -45,8 +47,8 @@ mod tests {
     #[test]
     fn test_basic_usage() {
         let mut mem = SrsMemory::new();
-        let i: Box<dyn SrsElement> = Box::new(SrsInteger{value: 2});
-        mem.add("i".to_string(), Some(i));
+        let i: Rc<dyn SrsElement> = Rc::new(SrsInteger{value: 2});
+        mem.add("i".to_string(), i);
         let result = mem.get(&"i".to_string());
         match result.unwrap().as_any().downcast_ref::<SrsInteger>() {
             Some(ri) => assert_eq!(2, ri.value),
@@ -61,8 +63,8 @@ mod tests {
         let mut mem = SrsMemory::new();
         mem.add_to(&binding);
 
-        let i: Box<dyn SrsElement> = Box::new(SrsInteger{value: 2});
-        mem.add("i".to_string(), Some(i));
+        let i: Rc<dyn SrsElement> = Rc::new(SrsInteger{value: 2});
+        mem.add("i".to_string(), i);
         let result = mem.get(&"i".to_string());
         match result.unwrap().as_any().downcast_ref::<SrsInteger>() {
             Some(ri) => assert_eq!(2, ri.value),
@@ -74,8 +76,8 @@ mod tests {
     fn test_chain_data_in_mother() {
         let mother = SrsMemory::new();
         let mut binding = Box::new(mother);
-        let i: Box<dyn SrsElement> = Box::new(SrsInteger{value: 2});
-        binding.add("i".to_string(), Some(i));
+        let i: Rc<dyn SrsElement> = Rc::new(SrsInteger{value: 2});
+        binding.add("i".to_string(), i);
 
 
         let mut mem = SrsMemory::new();

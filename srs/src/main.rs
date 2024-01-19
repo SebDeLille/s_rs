@@ -44,6 +44,6 @@ fn main() {
 
     }
 
-    let e = Evaluator{};
+    let e = Evaluator::new();
     let _ = e.eval(tmp.as_ref());
 }

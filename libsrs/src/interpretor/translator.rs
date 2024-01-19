@@ -1,3 +1,4 @@
+use std::rc::Rc;
 use std::slice::Iter;
 use crate::interpretor::lexeme::{Lexeme, LexemeType};
 use crate::types::core::{SrsElement, SrsValue};
@@ -7,8 +8,8 @@ use crate::types::integer::SrsInteger;
 use crate::types::list::SrsList;
 use crate::types::string::SrsString;
 
-pub fn translate_all(elements: Vec<Lexeme>) -> Result<Vec<Box<dyn SrsElement>>, SrsError> {
-    let mut values: Vec<Box<dyn SrsElement>> = Vec::new();
+pub fn translate_all(elements: Vec<Lexeme>) -> Result<Vec<Rc<dyn SrsElement>>, SrsError> {
+    let mut values: Vec<Rc<dyn SrsElement>> = Vec::new();
 
     let mut it = elements.iter();
     while let Some(value) = translate(&mut it)? {
@@ -39,7 +40,7 @@ fn translate_list(it: &mut Iter<'_, Lexeme>) -> SrsResult<SrsValue> {
                     Err(e) => return Err(e)
                 }
             },
-            LexemeType::RPAR => return Ok(Some(Box::new(list))),
+            LexemeType::RPAR => return Ok(Some(Rc::new(list))),
             _ => {
                 match translate_atom(lexeme) {
                     Ok(v) => list.add_tail(v)?,
@@ -48,15 +49,15 @@ fn translate_list(it: &mut Iter<'_, Lexeme>) -> SrsResult<SrsValue> {
             }
         }
     }
-    Err(SrsError{})
+    Err(SrsError::default())
 }
 
 fn translate_atom(lexeme: &Lexeme) -> SrsResult<SrsValue> {
     match lexeme.lexeme_type {
-        LexemeType::INTEGER => Ok(Some(Box::new(SrsInteger::new(lexeme.value.parse::<i64>()?)))),
-        LexemeType::ID => Ok(Some(Box::new(SrsId::new(lexeme.value.clone())))),
-        LexemeType::STRING => Ok(Some(Box::new(SrsString::new(lexeme.value.clone())))),
-        _ => Err(SrsError {})
+        // LexemeType::INTEGER => Ok(Some(Box::new(SrsInteger::new(lexeme.value.parse::<i64>()?)))),
+        // LexemeType::ID => Ok(Some(Box::new(SrsId::new(lexeme.value.clone())))),
+        // LexemeType::STRING => Ok(Some(Box::new(SrsString::new(lexeme.value.clone())))),
+        _ => Err(SrsError::default())
     }
 }
 
@@ -105,6 +106,7 @@ mod tests {
             match result {
                 Ok(v) => {
                     assert_eq!(1, v.len());
+                    assert!(v.get(0).unwrap().is_list());
                 }
                 Err(_) => panic!("perdu")
             }
