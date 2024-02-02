@@ -14,6 +14,11 @@ pub struct SrsError {
 
 pub type SrsResult<T> = Result<T, SrsError>;
 
+impl SrsError {
+    pub fn new(kind: SrsErrorKind) -> Self {
+        SrsError{kind}
+    }
+}
 impl From<ParseIntError> for SrsError {
     fn from(_value: ParseIntError) -> Self {
         SrsError{kind: SrsErrorKind::Undefined}

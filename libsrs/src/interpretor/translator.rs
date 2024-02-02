@@ -54,9 +54,9 @@ fn translate_list(it: &mut Iter<'_, Lexeme>) -> SrsResult<SrsValue> {
 
 fn translate_atom(lexeme: &Lexeme) -> SrsResult<SrsValue> {
     match lexeme.lexeme_type {
-        // LexemeType::INTEGER => Ok(Some(Box::new(SrsInteger::new(lexeme.value.parse::<i64>()?)))),
-        // LexemeType::ID => Ok(Some(Box::new(SrsId::new(lexeme.value.clone())))),
-        // LexemeType::STRING => Ok(Some(Box::new(SrsString::new(lexeme.value.clone())))),
+        LexemeType::INTEGER => Ok(Some(Rc::new(SrsInteger::new(lexeme.value.parse::<i64>()?)))),
+        LexemeType::ID => Ok(Some(Rc::new(SrsId::new(lexeme.value.clone())))),
+        LexemeType::STRING => Ok(Some(Rc::new(SrsString::new(lexeme.value.clone())))),
         _ => Err(SrsError::default())
     }
 }

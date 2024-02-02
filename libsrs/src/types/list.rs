@@ -1,13 +1,13 @@
 use std::any::Any;
 use std::fmt::{Display, Formatter};
+use std::iter::Iterator;
 use std::rc::Rc;
 use crate::types::core::{SrsElement, SrsType, SrsValue, SrsValueRef};
-use crate::types::error::{SrsError, SrsResult};
+use crate::types::error::{SrsError, SrsErrorKind, SrsResult};
 
 
 pub struct SrsList {
-    pub car: SrsValue,
-    pub cdr: SrsValue,
+    pub value: Vec<Rc<dyn SrsElement>>,
 }
 
 impl Display for SrsList {
@@ -18,11 +18,7 @@ impl Display for SrsList {
 
 impl SrsElement for SrsList {
     fn is_list(&self) -> bool {
-        if self.cdr.is_none() {
-            true
-        } else {
-            self.cdr.as_ref().unwrap().is_list()
-        }
+        true
     }
 
     fn get_type(&self) -> SrsType {
@@ -36,78 +32,47 @@ impl SrsElement for SrsList {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
-
 }
 
 impl Default for SrsList {
     fn default() -> Self {
         SrsList {
-            car: None,
-            cdr: None
+            value: Vec::new()
         }
     }
 }
 
 impl SrsList {
-    pub fn new(car: SrsValue, cdr: SrsValue) -> Self {
-        SrsList {
-            car,
-            cdr,
-        }
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn car(&self) -> SrsValue {
-        self.car.clone()
+        if self.value.is_empty() {
+            None
+        } else {
+            Some(self.value[0].clone())
+        }
     }
 
-    pub fn cdr(&self) -> SrsValue {
-        self.cdr.clone()
+    pub fn cdr(&self) -> Option<Vec<Rc<dyn SrsElement>>> {
+        if self.value.len() < 2 {
+            None
+        } else {
+            Some(self.value[1..]
+                .iter()
+                .map(|x| x.clone())
+                .collect())
+        }
     }
 
     pub fn add_tail(&mut self, value: SrsValue) -> SrsResult<()> {
-        let mut list = self;
-        loop {
-            if list.car.is_none() {
-                list.car = value.clone();
-                return Ok(())
-            } else if list.cdr.is_none() {
-                list.cdr = Some(Rc::new(SrsList {
-                    car: value.clone(),
-                    cdr: None
-                }));
-                return Ok(())
-            } else if list.cdr.as_ref().unwrap().is_list() {
-                match list.cdr.as_mut().unwrap().as_any_mut().downcast_mut::<SrsList>() {
-                    Some(l) => list = l,
-                    None => return Err(SrsError::default())
-                }
+        match value {
+            Some(v) => {
+                self.value.push(v);
+                Ok(())
             }
-            else {
-                return Err(SrsError::default())
-            }
-        }
-    }
-}
-
-pub struct Iterator {
-    pub current_list: SrsValue,
-}
-
-impl Iterator {
-
-    pub fn next(&mut self) -> SrsValue {
-        match self.current_list {
-            Some(value) => {
-                match value.as_any().downcast_ref::<SrsList>() {
-                    Some(l) => {
-                        let a = l.car();
-                        self.current_list = l.cdr();
-                        a
-                    }
-                    None => None
-                }
-            }
-            None => None
+            None => Err(SrsError::new(SrsErrorKind::Undefined))
         }
     }
 }
@@ -121,21 +86,12 @@ mod tests {
     use crate::types::list::Iterator;
 
     #[test]
-    fn test_add_tail(){
-        let mut node1 = SrsList {
-            car: Some(Rc::new(SrsInteger{value: 5})),
-            cdr: None
-        };
+    fn test_add_tail() {
+        let mut list = SrsList::default();
+        let i1: SrsValue = Some(Rc::new(SrsInteger::from(5)));
+        list.add_tail(i1).unwrap();
 
-        let node2: SrsValue  = Some(Rc::new (SrsList {
-            car: Some(Rc::new(SrsInteger{value: 15})),
-            cdr: None
-        }));
-
-        match node1.add_tail(node2) {
-            Ok(_) => assert!(node1.is_list()),
-            Err(_) => panic!()
-        }
+        assert_eq!(5, list.value[0].as_any().downcast_ref::<SrsInteger>().unwrap().value);
     }
 
     #[test]
@@ -160,6 +116,5 @@ mod tests {
         // }
         // assert_eq!(17, results.pop().unwrap());
         // assert_eq!(5, results.pop().unwrap());
-
     }
 }
