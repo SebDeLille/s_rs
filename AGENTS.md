@@ -48,6 +48,7 @@ Removed legacy files: `types/{id,integer,list,string}.rs`, `interpretor/error.rs
 ## Contributing
 
 See `CONTRIBUTING.md` for branch and pull-request workflow.
+Prefer `gh` over raw `git` for GitHub operations (PRs, issues, checks).
 
 ## Current Capabilities
 
