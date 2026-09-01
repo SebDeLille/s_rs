@@ -23,3 +23,13 @@ fn add_single_integer() {
 fn add_no_args_returns_identity() {
     assert_eq!(SrsValue::Integer(0), eval("(+)"));
 }
+
+#[test]
+fn multiply_single_integer() {
+    assert_eq!(SrsValue::Integer(4), eval("(* 4)"));
+}
+
+#[test]
+fn multiply_no_args_returns_identity() {
+    assert_eq!(SrsValue::Integer(1), eval("(*)"));
+}
