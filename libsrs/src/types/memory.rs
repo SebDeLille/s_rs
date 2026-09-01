@@ -1,103 +1,83 @@
 use std::collections::HashMap;
-use std::rc::Rc;
-use crate::types::core::{SrsElement, SrsValue, SrsValueRef};
+use crate::types::core::SrsValue;
 
 pub struct SrsMemory<'a> {
-    memory: HashMap<String, Rc<dyn SrsElement>>,
-    mother: Option<&'a Box<SrsMemory<'a>>>
+    memory: HashMap<String, SrsValue>,
+    mother: Option<&'a SrsMemory<'a>>,
 }
 
 impl<'a> SrsMemory<'a> {
     pub fn new() -> Self {
         SrsMemory {
             memory: HashMap::new(),
-            mother: None
+            mother: None,
         }
     }
 
-    pub fn add_to(&mut self, mem: &'a Box<SrsMemory>)  {
-        if self.mother.is_none() {
-            self.mother = Some(mem);
+    pub fn child(parent: &'a SrsMemory<'a>) -> Self {
+        SrsMemory {
+            memory: HashMap::new(),
+            mother: Some(parent),
         }
     }
 
-    pub fn get(&self, key: &String) -> Option<&Rc<dyn  SrsElement>> {
-        let v = self.memory.get(key);
-        if v.is_some() {
-            v.clone()
-        } else if self.mother.is_some() {
-            self.mother.as_ref().unwrap().get(key)
+    pub fn get(&self, key: &str) -> Option<&SrsValue> {
+        if let Some(value) = self.memory.get(key) {
+            Some(value)
+        } else if let Some(mother) = self.mother {
+            mother.get(key)
         } else {
             None
         }
     }
 
-    pub fn add(&mut self, key: String, value: Rc<dyn SrsElement>) {
-        self.memory.insert(key.clone(), value);
+    pub fn add(&mut self, key: impl Into<String>, value: SrsValue) {
+        self.memory.insert(key.into(), value);
+    }
+}
+
+impl Default for SrsMemory<'_> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::rc::Rc;
-    use crate::types::core::SrsElement;
-    use crate::types::integer::SrsInteger;
-    use crate::types::memory::SrsMemory;
+    use super::*;
 
     #[test]
     fn test_basic_usage() {
         let mut mem = SrsMemory::new();
-        let i: Rc<dyn SrsElement> = Rc::new(SrsInteger{value: 2});
-        mem.add("i".to_string(), i);
-        let result = mem.get(&"i".to_string());
-        match result.unwrap().as_any().downcast_ref::<SrsInteger>() {
-            Some(ri) => assert_eq!(2, ri.value),
-            None => panic!("incorrect type")
-        }
+        mem.add("i", SrsValue::Integer(2));
+        let result = mem.get("i");
+        assert_eq!(Some(&SrsValue::Integer(2)), result);
     }
 
     #[test]
     fn test_chain_data_in_child() {
         let mother = SrsMemory::new();
-        let binding = Box::new(mother);
-        let mut mem = SrsMemory::new();
-        mem.add_to(&binding);
-
-        let i: Rc<dyn SrsElement> = Rc::new(SrsInteger{value: 2});
-        mem.add("i".to_string(), i);
-        let result = mem.get(&"i".to_string());
-        match result.unwrap().as_any().downcast_ref::<SrsInteger>() {
-            Some(ri) => assert_eq!(2, ri.value),
-            None => panic!("incorrect type")
-        }
+        let mut mem = SrsMemory::child(&mother);
+        mem.add("i", SrsValue::Integer(2));
+        let result = mem.get("i");
+        assert_eq!(Some(&SrsValue::Integer(2)), result);
     }
 
     #[test]
     fn test_chain_data_in_mother() {
-        let mother = SrsMemory::new();
-        let mut binding = Box::new(mother);
-        let i: Rc<dyn SrsElement> = Rc::new(SrsInteger{value: 2});
-        binding.add("i".to_string(), i);
+        let mut mother = SrsMemory::new();
+        mother.add("i", SrsValue::Integer(2));
 
-
-        let mut mem = SrsMemory::new();
-        mem.add_to(&binding);
-
-        let result = mem.get(&"i".to_string());
-        match result.unwrap().as_any().downcast_ref::<SrsInteger>() {
-            Some(ri) => assert_eq!(2, ri.value),
-            None => panic!("incorrect type")
-        }
+        let mem = SrsMemory::child(&mother);
+        let result = mem.get("i");
+        assert_eq!(Some(&SrsValue::Integer(2)), result);
     }
 
     #[test]
     fn test_chain_data_value_not_in() {
         let mother = SrsMemory::new();
-        let binding = Box::new(mother);
-        let mut mem = SrsMemory::new();
-        mem.add_to(&binding);
-
-        let result = mem.get(&"i".to_string());
+        let mem = SrsMemory::child(&mother);
+        let result = mem.get("i");
         assert!(result.is_none());
     }
 }

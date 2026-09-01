@@ -1,79 +1,174 @@
-use crate::types::core::{SrsElement, SrsType, SrsValue, SrsValueRef};
+use crate::types::core::SrsValue;
 use crate::types::error::{SrsError, SrsErrorKind, SrsResult};
-use crate::types::id::SrsId;
-use crate::types::integer::SrsInteger;
-use crate::types::list::SrsList;
 use crate::types::memory::SrsMemory;
 
 pub struct Evaluator<'a> {
-    memory: Box<SrsMemory<'a>>,
+    memory: SrsMemory<'a>,
 }
 
-impl Evaluator<'_> {
+impl<'a> Evaluator<'a> {
     pub fn new() -> Self {
-        Evaluator { memory: Box::new(SrsMemory::new()) }
+        let mut memory = SrsMemory::new();
+        Self::register_primitives(&mut memory);
+        Evaluator { memory }
     }
 
-    pub fn eval(&self, element: Option<&Box<dyn SrsElement>>) -> SrsResult<SrsValue> {
-        match element.unwrap().get_type() {
-            SrsType::LIST => self.eval_list(element),
-            SrsType::INTEGER => self.eval_integer(element),
-            SrsType::ID => self.eval_id(element),
-            _ => Err(SrsError { kind: SrsErrorKind::UnknownType })
+    fn register_primitives(memory: &mut SrsMemory) {
+        memory.add("+", SrsValue::Id("__add".to_string()));
+        memory.add("-", SrsValue::Id("__sub".to_string()));
+        memory.add("*", SrsValue::Id("__mul".to_string()));
+        memory.add("/", SrsValue::Id("__div".to_string()));
+    }
+
+    pub fn eval(&self, value: &SrsValue) -> SrsResult<SrsValue> {
+        match value {
+            SrsValue::List(list) => self.eval_list(list),
+            SrsValue::Id(name) => self.eval_id(name),
+            literal @ (SrsValue::Integer(_) | SrsValue::Float(_) | SrsValue::Bool(_) | SrsValue::String(_)) => Ok(literal.clone()),
+            SrsValue::Nil => Ok(SrsValue::Nil),
+            SrsValue::Vector(_) => Err(SrsError::new(SrsErrorKind::TypeMismatch)),
         }
     }
 
-    fn eval_list(&self, list: SrsValueRef) -> SrsResult<SrsValue> {
-        match list.unwrap().as_any().downcast_ref::<SrsList>() {
-            Some(_) => Ok(None),
-            None => Err(SrsError { kind: SrsErrorKind::DowncastFail })
+    fn eval_list(&self, list: &[SrsValue]) -> SrsResult<SrsValue> {
+        if list.is_empty() {
+            return Ok(SrsValue::Nil);
+        }
+
+        if let SrsValue::Id(op) = &list[0] {
+            let op = self.resolve(op);
+            let args = list.get(1..).unwrap_or(&[]);
+            return self.apply(&op, args);
+        }
+
+        Err(SrsError::new(SrsErrorKind::UnknownType))
+    }
+
+    fn eval_id(&self, name: &str) -> SrsResult<SrsValue> {
+        self.memory
+            .get(name)
+            .cloned()
+            .or_else(|| self.resolve_primitive(name))
+            .ok_or_else(|| {
+                SrsError::with_message(
+                    SrsErrorKind::UnknownIdentifier,
+                    format!("unknown identifier: {}", name),
+                )
+            })
+    }
+
+    fn resolve_primitive(&self, name: &str) -> Option<SrsValue> {
+        match name {
+            "+" | "-" | "*" | "/" => Some(SrsValue::Id(format!("__{}", name))),
+            _ => None,
         }
     }
 
-    fn eval_integer(&self, i: SrsValueRef) -> SrsResult<SrsValue> {
-        // match i.unwrap().as_any().downcast_ref::<SrsInteger>() {
-        //     Some(int) => Ok(Some(Box::new(SrsInteger { value: int.value }))),
-        //     None => Err(SrsError { kind: SrsErrorKind::DowncastFail })
-        // }
-        Ok(None)
+    fn resolve(&self, name: &str) -> SrsValue {
+        self.memory
+            .get(name)
+            .cloned()
+            .unwrap_or_else(|| SrsValue::Id(name.to_string()))
     }
 
-    fn eval_id(&self, id: SrsValueRef) -> SrsResult<SrsValue> {
-        match id.unwrap().as_any().downcast_ref::<SrsId>() {
-            Some(id) => Ok(None),
-            None => Err(SrsError { kind: SrsErrorKind::DowncastFail })
+    fn apply(&self, op: &SrsValue, raw_args: &[SrsValue]) -> SrsResult<SrsValue> {
+        let op_name = match op {
+            SrsValue::Id(n) => n.as_str(),
+            _ => return Err(SrsError::new(SrsErrorKind::TypeMismatch)),
+        };
+
+        let mut args = Vec::with_capacity(raw_args.len());
+        for a in raw_args {
+            args.push(self.eval(a)?);
         }
+
+        match op_name {
+            "__add" => Self::fold_numbers(&args, |a, b| a + b, |a, b| a + b),
+            "__sub" => Self::fold_numbers(&args, |a, b| a - b, |a, b| a - b),
+            "__mul" => Self::fold_numbers(&args, |a, b| a * b, |a, b| a * b),
+            "__div" => Self::fold_numbers(&args, |a, b| a / b, |a, b| a / b),
+            _ => Err(SrsError::with_message(SrsErrorKind::UnknownIdentifier, format!("unknown operator: {}", op_name))),
+        }
+    }
+
+    fn fold_numbers(
+        args: &[SrsValue],
+        iop: fn(i64, i64) -> i64,
+        fop: fn(f64, f64) -> f64,
+    ) -> SrsResult<SrsValue> {
+        if args.is_empty() {
+            return Err(SrsError::new(SrsErrorKind::NotEnoughArguments));
+        }
+
+        let mut result = args[0].clone();
+        for value in &args[1..] {
+            result = match (&result, value) {
+                (SrsValue::Integer(a), SrsValue::Integer(b)) => SrsValue::Integer(iop(*a, *b)),
+                (SrsValue::Integer(a), SrsValue::Float(b)) => SrsValue::Float(fop(*a as f64, *b)),
+                (SrsValue::Float(a), SrsValue::Integer(b)) => SrsValue::Float(fop(*a, *b as f64)),
+                (SrsValue::Float(a), SrsValue::Float(b)) => SrsValue::Float(fop(*a, *b)),
+                _ => return Err(SrsError::new(SrsErrorKind::TypeMismatch)),
+            };
+        }
+
+        Ok(result)
+    }
+}
+
+impl Default for Evaluator<'_> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::interpretor::evaluator::Evaluator;
+    use super::*;
     use crate::interpretor::lexical_analyzer::get_lexemes;
     use crate::interpretor::translator::translate_all;
-    use crate::to_type;
-    use crate::types::core::SrsType;
-    use crate::types::integer::SrsInteger;
+
+    fn eval(scm: &str) -> SrsValue {
+        let values = translate_all(get_lexemes(scm).unwrap()).unwrap();
+        let evaluator = Evaluator::new();
+        evaluator.eval(&values[0]).unwrap()
+    }
 
     #[test]
-    fn basic() {
+    fn basic_integer() {
+        assert_eq!(SrsValue::Integer(2), eval("2"));
+    }
+
+    #[test]
+    fn add_integers() {
+        assert_eq!(SrsValue::Integer(5), eval("(+ 2 3)"));
+    }
+
+    #[test]
+    fn nested_expression() {
+        assert_eq!(SrsValue::Integer(10), eval("(+ (* 2 3) 4)"));
+    }
+
+    #[test]
+    fn float_coercion() {
+        let result = eval("(+ 1 2.5)");
+        if let SrsValue::Float(f) = result {
+            assert!((f - 3.5).abs() < f64::EPSILON);
+        } else {
+            panic!("expected float");
+        }
+    }
+
+    #[test]
+    fn missing_args_fails() {
         let evaluator = Evaluator::new();
-        let scm = "2";
-        let tmp_res = get_lexemes(&scm.to_string());
-        let result = translate_all(tmp_res.unwrap());
-        // match result {
-        //     Ok(v) => {
-        //         let value = evaluator.eval(v.get(0));
-        //         match value {
-        //             Ok(res) => {
-        //                 assert_eq!(res.as_ref().unwrap().get_type(), SrsType::INTEGER);
-        //                 let i = to_type!(res, SrsInteger).unwrap();
-        //                 assert_eq!(i.value, 2);
-        //             }
-        //             Err(e) => panic!("{}", e)
-        //         }
-        //     }
-        //     Err(e) => panic!("{}", e)
-        // }
+        let values = translate_all(get_lexemes("(+ )").unwrap()).unwrap();
+        assert!(evaluator.eval(&values[0]).is_err());
+    }
+
+    #[test]
+    fn unknown_operator_fails() {
+        let evaluator = Evaluator::new();
+        let values = translate_all(get_lexemes("(foo 1)").unwrap()).unwrap();
+        assert!(evaluator.eval(&values[0]).is_err());
     }
 }

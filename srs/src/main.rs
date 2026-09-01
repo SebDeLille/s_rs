@@ -1,26 +1,35 @@
-use libsrs::add;
-use std::env;
-use std::rc::Rc;
 use libsrs::interpretor::evaluator::Evaluator;
-use libsrs::types::core::SrsElement;
-use libsrs::types::id::SrsId;
-use libsrs::types::integer::SrsInteger;
-use libsrs::types::list::{SrsList};
-
+use libsrs::interpretor::lexical_analyzer::get_lexemes;
+use libsrs::interpretor::translator::translate_all;
+use std::env;
 
 fn main() {
+    let args: Vec<String> = env::args().collect();
+    let program = args.get(1).cloned().unwrap_or_else(|| "(+ 2 3)".to_string());
 
-    println!("Hello, world! {}", add(5,6));
-    for argument in env::args() {
-        println!("{argument}");
+    println!("input: {}", program);
+
+    let lexemes = match get_lexemes(&program) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("lexer error: {}", e);
+            return;
+        }
+    };
+
+    let values = match translate_all(lexemes) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("parser error: {}", e);
+            return;
+        }
+    };
+
+    let evaluator = Evaluator::new();
+    for value in values {
+        match evaluator.eval(&value) {
+            Ok(result) => println!("= {}", result),
+            Err(e) => eprintln!("eval error: {}", e),
+        }
     }
-
-    let deux = SrsInteger{value: 2};
-    let trois = SrsInteger{value: 3};
-    let add = SrsId{value: "+".to_string()};
-    let mut list = SrsList::new();
-    list.add_tail(Some(Rc::new(add)));
-    list.add_tail(Some(Rc::new(deux)));
-    list.add_tail(Some(Rc::new(trois)));
-
 }
