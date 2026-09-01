@@ -45,6 +45,10 @@ Removed legacy files: `types/{id,integer,list,string}.rs`, `interpretor/error.rs
 - Tests live in the same file under `#[cfg(test)] mod tests`.
 - Operator lexemes (e.g. `+`, `-`) are translated to `SrsValue::Id("+")` etc.
 
+## Contributing
+
+See `CONTRIBUTING.md` for branch and pull-request workflow.
+
 ## Current Capabilities
 
 - Lexer: integers, floats, identifiers, strings, booleans (`#t`/`#f`), parentheses, operators, comparison tokens.
