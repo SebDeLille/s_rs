@@ -83,12 +83,40 @@ impl<'a> Evaluator<'a> {
         }
 
         match op_name {
-            "__add" => Self::fold_numbers(&args, |a, b| a + b, |a, b| a + b),
-            "__sub" => Self::fold_numbers(&args, |a, b| a - b, |a, b| a - b),
-            "__mul" => Self::fold_numbers(&args, |a, b| a * b, |a, b| a * b),
-            "__div" => Self::fold_numbers(&args, |a, b| a / b, |a, b| a / b),
+            "__add" => Self::add(&args),
+            "__sub" => Self::sub(&args),
+            "__mul" => Self::mul(&args),
+            "__div" => Self::div(&args),
             _ => Err(SrsError::with_message(SrsErrorKind::UnknownIdentifier, format!("unknown operator: {}", op_name))),
         }
+    }
+
+    fn add(args: &[SrsValue]) -> SrsResult<SrsValue> {
+        if args.is_empty() {
+            return Ok(SrsValue::Integer(0));
+        }
+        Self::fold_numbers(args, |a, b| a + b, |a, b| a + b)
+    }
+
+    fn sub(args: &[SrsValue]) -> SrsResult<SrsValue> {
+        if args.is_empty() {
+            return Err(SrsError::new(SrsErrorKind::NotEnoughArguments));
+        }
+        Self::fold_numbers(args, |a, b| a - b, |a, b| a - b)
+    }
+
+    fn mul(args: &[SrsValue]) -> SrsResult<SrsValue> {
+        if args.is_empty() {
+            return Ok(SrsValue::Integer(1));
+        }
+        Self::fold_numbers(args, |a, b| a * b, |a, b| a * b)
+    }
+
+    fn div(args: &[SrsValue]) -> SrsResult<SrsValue> {
+        if args.is_empty() {
+            return Err(SrsError::new(SrsErrorKind::NotEnoughArguments));
+        }
+        Self::fold_numbers(args, |a, b| a / b, |a, b| a / b)
     }
 
     fn fold_numbers(
@@ -159,9 +187,9 @@ mod tests {
     }
 
     #[test]
-    fn missing_args_fails() {
+    fn missing_args_fails_for_sub() {
         let evaluator = Evaluator::new();
-        let values = translate_all(get_lexemes("(+ )").unwrap()).unwrap();
+        let values = translate_all(get_lexemes("(- )").unwrap()).unwrap();
         assert!(evaluator.eval(&values[0]).is_err());
     }
 
