@@ -18,6 +18,7 @@ impl<'a> Evaluator<'a> {
         memory.add("-", SrsValue::Id("__sub".to_string()));
         memory.add("*", SrsValue::Id("__mul".to_string()));
         memory.add("/", SrsValue::Id("__div".to_string()));
+        memory.add("exit", SrsValue::Id("__exit".to_string()));
     }
 
     pub fn eval(&self, value: &SrsValue) -> SrsResult<SrsValue> {
@@ -60,6 +61,7 @@ impl<'a> Evaluator<'a> {
     fn resolve_primitive(&self, name: &str) -> Option<SrsValue> {
         match name {
             "+" | "-" | "*" | "/" => Some(SrsValue::Id(format!("__{}", name))),
+            "exit" => Some(SrsValue::Id("__exit".to_string())),
             _ => None,
         }
     }
@@ -87,6 +89,7 @@ impl<'a> Evaluator<'a> {
             "__sub" => Self::sub(&args),
             "__mul" => Self::mul(&args),
             "__div" => Self::div(&args),
+            "__exit" => Self::exit(&args),
             _ => Err(SrsError::with_message(SrsErrorKind::UnknownIdentifier, format!("unknown operator: {}", op_name))),
         }
     }
@@ -116,7 +119,32 @@ impl<'a> Evaluator<'a> {
         if args.is_empty() {
             return Err(SrsError::new(SrsErrorKind::NotEnoughArguments));
         }
+        for d in &args[1..] {
+            if Self::is_numeric_zero(d) {
+                return Err(SrsError::with_message(
+                    SrsErrorKind::TypeMismatch,
+                    "division by zero",
+                ));
+            }
+        }
         Self::fold_numbers(args, |a, b| a / b, |a, b| a / b)
+    }
+
+    fn exit(args: &[SrsValue]) -> SrsResult<SrsValue> {
+        match args {
+            [] => Err(SrsError::Exit(0)),
+            [SrsValue::Integer(code)] => Err(SrsError::Exit(*code)),
+            [_] => Err(SrsError::new(SrsErrorKind::TypeMismatch)),
+            [_, _, ..] => Err(SrsError::new(SrsErrorKind::TooManyArguments)),
+        }
+    }
+
+    fn is_numeric_zero(value: &SrsValue) -> bool {
+        match value {
+            SrsValue::Integer(0) => true,
+            SrsValue::Float(x) if *x == 0.0 => true,
+            _ => false,
+        }
     }
 
     fn fold_numbers(
@@ -154,11 +182,18 @@ mod tests {
     use super::*;
     use crate::interpretor::lexical_analyzer::get_lexemes;
     use crate::interpretor::translator::translate_all;
+    use crate::types::error::SrsError;
 
     fn eval(scm: &str) -> SrsValue {
         let values = translate_all(get_lexemes(scm).unwrap()).unwrap();
         let evaluator = Evaluator::new();
         evaluator.eval(&values[0]).unwrap()
+    }
+
+    fn eval_err(scm: &str) -> SrsError {
+        let values = translate_all(get_lexemes(scm).unwrap()).unwrap();
+        let evaluator = Evaluator::new();
+        evaluator.eval(&values[0]).unwrap_err()
     }
 
     #[test]
@@ -198,5 +233,25 @@ mod tests {
         let evaluator = Evaluator::new();
         let values = translate_all(get_lexemes("(foo 1)").unwrap()).unwrap();
         assert!(evaluator.eval(&values[0]).is_err());
+    }
+
+    #[test]
+    fn exit_no_arg_returns_code_zero() {
+        assert_eq!(SrsError::Exit(0), eval_err("(exit)"));
+    }
+
+    #[test]
+    fn exit_with_integer_returns_code() {
+        assert_eq!(SrsError::Exit(5), eval_err("(exit 5)"));
+    }
+
+    #[test]
+    fn exit_with_too_many_args_fails() {
+        assert_eq!(SrsErrorKind::TooManyArguments, eval_err("(exit 1 2)").kind().unwrap());
+    }
+
+    #[test]
+    fn exit_with_non_integer_fails() {
+        assert_eq!(SrsErrorKind::TypeMismatch, eval_err("(exit #t)").kind().unwrap());
     }
 }

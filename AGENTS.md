@@ -54,7 +54,8 @@ Prefer `gh` over raw `git` for GitHub operations (PRs, issues, checks).
 
 - Lexer: integers, floats, identifiers, strings, booleans (`#t`/`#f`), parentheses, operators, comparison tokens.
 - Parser: nested s-expressions into `SrsValue::List(...)`.
-- Evaluator: literals, primitive arithmetic `+ - * /` with int/float coercion.
+- Evaluator: literals, primitive arithmetic `+ - * /` with int/float coercion, division-by-zero guard, primitive `exit` / `exit <integer>`.
+- CLI: interactive REPL or one-shot expression via first argument; `exit` / `quit` / Ctrl-D / `(exit [code])` supported.
 
 ## Security Notes
 

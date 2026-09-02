@@ -12,13 +12,14 @@ pub enum SrsErrorKind {
     ParseError,
     TypeMismatch,
     NotEnoughArguments,
+    TooManyArguments,
     UnknownIdentifier,
 }
 
-#[derive(Debug)]
-pub struct SrsError {
-    pub kind: SrsErrorKind,
-    pub message: String,
+#[derive(Debug, Clone, PartialEq)]
+pub enum SrsError {
+    Error { kind: SrsErrorKind, message: String },
+    Exit(i64),
 }
 
 pub type SrsResult<T> = Result<T, SrsError>;
@@ -34,22 +35,45 @@ fn default_message(kind: SrsErrorKind) -> &'static str {
         SrsErrorKind::ParseError => "Parse error",
         SrsErrorKind::TypeMismatch => "Type mismatch",
         SrsErrorKind::NotEnoughArguments => "Not enough arguments",
+        SrsErrorKind::TooManyArguments => "Too many arguments",
         SrsErrorKind::UnknownIdentifier => "Unknown identifier",
     }
 }
 
 impl SrsError {
     pub fn new(kind: SrsErrorKind) -> Self {
-        SrsError {
+        SrsError::Error {
             message: default_message(kind).to_string(),
             kind,
         }
     }
 
     pub fn with_message(kind: SrsErrorKind, message: impl Into<String>) -> Self {
-        SrsError {
+        SrsError::Error {
             kind,
             message: message.into(),
+        }
+    }
+
+    pub fn exit(code: i64) -> Self {
+        SrsError::Exit(code)
+    }
+
+    pub fn is_exit(&self) -> bool {
+        matches!(self, SrsError::Exit(_))
+    }
+
+    pub fn exit_code(&self) -> Option<i64> {
+        match self {
+            SrsError::Exit(code) => Some(*code),
+            _ => None,
+        }
+    }
+
+    pub fn kind(&self) -> Option<SrsErrorKind> {
+        match self {
+            SrsError::Error { kind, .. } => Some(*kind),
+            _ => None,
         }
     }
 }
@@ -74,6 +98,9 @@ impl Default for SrsError {
 
 impl Display for SrsError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.message)
+        match self {
+            SrsError::Error { message, .. } => write!(f, "{}", message),
+            SrsError::Exit(_) => Ok(()),
+        }
     }
 }
