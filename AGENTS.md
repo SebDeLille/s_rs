@@ -6,7 +6,7 @@ Minimal Scheme interpreter in Rust.
 Workspace layout:
 
 - `libsrs/` — core library
-  - `src/types/` — `SrsValue` enum, errors, memory environment
+  - `src/types/` — `SrsValue` enum, errors, shared environment (`Env`)
   - `src/interpretor/` — lexer, parser (translator), evaluator
 - `srs/` — CLI binary
 

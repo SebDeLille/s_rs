@@ -8,11 +8,12 @@ use libsrs::types::error::SrsError;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    let evaluator = Evaluator::new();
 
     let result = if let Some(program) = args.get(1) {
-        run_one_shot(program)
+        run_one_shot(&evaluator, program)
     } else {
-        run_repl()
+        run_repl(&evaluator)
     };
 
     match result {
@@ -29,11 +30,11 @@ fn main() {
     }
 }
 
-fn run_one_shot(input: &str) -> Result<Option<SrsValue>, SrsError> {
-    evaluate(input)
+fn run_one_shot(evaluator: &Evaluator, input: &str) -> Result<Option<SrsValue>, SrsError> {
+    evaluate(evaluator, input)
 }
 
-fn run_repl() -> Result<Option<SrsValue>, SrsError> {
+fn run_repl(evaluator: &Evaluator) -> Result<Option<SrsValue>, SrsError> {
     let stdin = io::stdin();
     let stdout = io::stdout();
     let mut stdout_lock = stdout.lock();
@@ -55,7 +56,7 @@ fn run_repl() -> Result<Option<SrsValue>, SrsError> {
             return Ok(None);
         }
 
-        match evaluate(trimmed) {
+        match evaluate(evaluator, trimmed) {
             Ok(Some(value)) => println!("= {}", value),
             Ok(None) => {}
             Err(SrsError::Exit(code)) => return Err(SrsError::Exit(code)),
@@ -64,14 +65,13 @@ fn run_repl() -> Result<Option<SrsValue>, SrsError> {
     }
 }
 
-fn evaluate(input: &str) -> Result<Option<SrsValue>, SrsError> {
+fn evaluate(evaluator: &Evaluator, input: &str) -> Result<Option<SrsValue>, SrsError> {
     let lexemes = get_lexemes(input)?;
     let values = translate_all(lexemes)?;
     if values.is_empty() {
         return Ok(None);
     }
 
-    let evaluator = Evaluator::new();
     let mut last: Option<SrsValue> = None;
     for value in values {
         match evaluator.eval(&value) {

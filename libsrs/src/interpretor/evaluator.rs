@@ -1,24 +1,24 @@
 use crate::types::core::SrsValue;
+use crate::types::env::{Env, EnvRef};
 use crate::types::error::{SrsError, SrsErrorKind, SrsResult};
-use crate::types::memory::SrsMemory;
 
-pub struct Evaluator<'a> {
-    memory: SrsMemory<'a>,
+pub struct Evaluator {
+    env: EnvRef,
 }
 
-impl<'a> Evaluator<'a> {
+impl Evaluator {
     pub fn new() -> Self {
-        let mut memory = SrsMemory::new();
-        Self::register_primitives(&mut memory);
-        Evaluator { memory }
+        let env = Env::root();
+        Self::register_primitives(&env);
+        Evaluator { env }
     }
 
-    fn register_primitives(memory: &mut SrsMemory) {
-        memory.add("+", SrsValue::Id("__add".to_string()));
-        memory.add("-", SrsValue::Id("__sub".to_string()));
-        memory.add("*", SrsValue::Id("__mul".to_string()));
-        memory.add("/", SrsValue::Id("__div".to_string()));
-        memory.add("exit", SrsValue::Id("__exit".to_string()));
+    fn register_primitives(env: &EnvRef) {
+        env.define("+", SrsValue::Id("__add".to_string()));
+        env.define("-", SrsValue::Id("__sub".to_string()));
+        env.define("*", SrsValue::Id("__mul".to_string()));
+        env.define("/", SrsValue::Id("__div".to_string()));
+        env.define("exit", SrsValue::Id("__exit".to_string()));
     }
 
     pub fn eval(&self, value: &SrsValue) -> SrsResult<SrsValue> {
@@ -46,9 +46,8 @@ impl<'a> Evaluator<'a> {
     }
 
     fn eval_id(&self, name: &str) -> SrsResult<SrsValue> {
-        self.memory
+        self.env
             .get(name)
-            .cloned()
             .or_else(|| self.resolve_primitive(name))
             .ok_or_else(|| {
                 SrsError::with_message(
@@ -67,9 +66,8 @@ impl<'a> Evaluator<'a> {
     }
 
     fn resolve(&self, name: &str) -> SrsValue {
-        self.memory
+        self.env
             .get(name)
-            .cloned()
             .unwrap_or_else(|| SrsValue::Id(name.to_string()))
     }
 
@@ -171,7 +169,7 @@ impl<'a> Evaluator<'a> {
     }
 }
 
-impl Default for Evaluator<'_> {
+impl Default for Evaluator {
     fn default() -> Self {
         Self::new()
     }
