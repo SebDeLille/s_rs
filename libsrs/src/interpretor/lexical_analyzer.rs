@@ -1,9 +1,46 @@
 use crate::interpretor::lexeme::{Lexeme, LexemeType};
 use crate::types::error::{SrsError, SrsErrorKind, SrsResult};
 
+/// State of the lexer's single-character DFA.
+///
+/// The "done" variants are transient markers produced when a lexeme
+/// ends on the *current* character, which must then be reprocessed as
+/// the start of the next lexeme. They are consumed by `is_star`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LexerState {
+    /// Start / accepting state. Whitespace keeps us here.
+    Start,
+    /// Reading an integer literal.
+    Integer,
+    /// Integer lexeme just emitted; current char still needs to be processed.
+    IntegerDone,
+    /// Reading the fractional part of a float (digits after '.').
+    Float,
+    /// Float lexeme just emitted; current char still needs to be processed.
+    FloatDone,
+    /// Reading an identifier or keyword.
+    Id,
+    /// Identifier lexeme just emitted; current char still needs to be processed.
+    IdDone,
+    /// Inside a double-quoted string.
+    InString,
+    /// After a `#`, expecting `t`, `f`, or `(`.
+    Sharp,
+    /// After a `<`, deciding between `<=` and `<`.
+    Lt,
+    /// `<` lexeme just emitted; current char still needs to be processed.
+    LtDone,
+    /// After a `>`, deciding between `>=` and `>`.
+    Gt,
+    /// `>` lexeme just emitted; current char still needs to be processed.
+    GtDone,
+    /// After a backslash inside a string, escaping the next character.
+    Escape,
+}
+
 pub fn get_lexemes(s: &str) -> SrsResult<Vec<Lexeme>> {
     let mut list: Vec<Lexeme> = Vec::new();
-    let mut status = 0u8;
+    let mut status = LexerState::Start;
     let mut buffer = String::new();
 
     for c in s.chars() {
@@ -27,11 +64,20 @@ fn emit_value(l: LexemeType, buffer: &str) -> Option<Lexeme> {
     Some(Lexeme::new(l, buffer.to_string()))
 }
 
-fn is_star(status: u8) -> bool {
-    matches!(status, 4 | 7 | 24 | 27)
+/// States where the current character *terminates* the previous lexeme
+/// and must be reprocessed as the start of the next lexeme.
+fn is_star(status: LexerState) -> bool {
+    matches!(
+        status,
+        LexerState::IntegerDone
+            | LexerState::FloatDone
+            | LexerState::IdDone
+            | LexerState::LtDone
+            | LexerState::GtDone
+    )
 }
 
-fn filter(c: &char, status: &mut u8, buffer: &mut String) -> SrsResult<Vec<Lexeme>> {
+fn filter(c: &char, status: &mut LexerState, buffer: &mut String) -> SrsResult<Vec<Lexeme>> {
     let mut result = Vec::new();
 
     if let Some(l) = filter_nobuffer(c, status, buffer)? {
@@ -39,7 +85,7 @@ fn filter(c: &char, status: &mut u8, buffer: &mut String) -> SrsResult<Vec<Lexem
         result.push(l);
     }
     if is_star(*status) {
-        *status = 0;
+        *status = LexerState::Start;
         if let Some(l) = filter_nobuffer(c, status, buffer)? {
             buffer.clear();
             result.push(l);
@@ -51,26 +97,26 @@ fn filter(c: &char, status: &mut u8, buffer: &mut String) -> SrsResult<Vec<Lexem
 
 fn filter_nobuffer(
     c: &char,
-    status: &mut u8,
+    status: &mut LexerState,
     buffer: &mut String,
 ) -> SrsResult<Option<Lexeme>> {
     match status {
-        0 => {
+        LexerState::Start => {
             if c.is_ascii_digit() {
                 buffer.push(*c);
-                *status = 1;
+                *status = LexerState::Integer;
                 Ok(None)
             } else if c.is_whitespace() {
                 Ok(None)
             } else if c.is_alphabetic() || *c == '_' {
                 buffer.push(*c);
-                *status = 5;
+                *status = LexerState::Id;
                 Ok(None)
             } else if *c == '"' {
-                *status = 8;
+                *status = LexerState::InString;
                 Ok(None)
             } else if *c == '#' {
-                *status = 10;
+                *status = LexerState::Sharp;
                 Ok(None)
             } else if *c == '(' {
                 Ok(emit(LexemeType::LPAR))
@@ -89,10 +135,10 @@ fn filter_nobuffer(
             } else if *c == '=' {
                 Ok(emit(LexemeType::EQ))
             } else if *c == '<' {
-                *status = 22;
+                *status = LexerState::Lt;
                 Ok(None)
             } else if *c == '>' {
-                *status = 25;
+                *status = LexerState::Gt;
                 Ok(None)
             } else {
                 Err(SrsError::with_message(
@@ -101,57 +147,57 @@ fn filter_nobuffer(
                 ))
             }
         }
-        1 => {
+        LexerState::Integer => {
             if c.is_ascii_digit() {
                 buffer.push(*c);
                 Ok(None)
             } else if c.is_whitespace() {
-                *status = 0;
+                *status = LexerState::Start;
                 Ok(emit_value(LexemeType::INTEGER, buffer))
             } else if *c == '.' {
-                *status = 2;
+                *status = LexerState::Float;
                 buffer.push(*c);
                 Ok(None)
             } else if c.is_alphabetic() || *c == '_' {
-                *status = 5;
+                *status = LexerState::Id;
                 buffer.push(*c);
                 Ok(None)
             } else {
-                *status = 4;
+                *status = LexerState::IntegerDone;
                 Ok(emit_value(LexemeType::INTEGER, buffer))
             }
         }
-        2 => {
+        LexerState::Float => {
             if c.is_ascii_digit() {
                 buffer.push(*c);
                 Ok(None)
             } else if c.is_whitespace() {
-                *status = 0;
+                *status = LexerState::Start;
                 Ok(emit_value(LexemeType::FLOAT, buffer))
             } else {
-                *status = 4;
+                *status = LexerState::FloatDone;
                 Ok(emit_value(LexemeType::FLOAT, buffer))
             }
         }
-        5 => {
+        LexerState::Id => {
             if c.is_alphanumeric() || *c == '_' {
                 buffer.push(*c);
                 Ok(None)
             } else if c.is_whitespace() {
-                *status = 0;
+                *status = LexerState::Start;
                 Ok(emit_value(LexemeType::ID, buffer))
             } else {
-                *status = 7;
+                *status = LexerState::IdDone;
                 Ok(emit_value(LexemeType::ID, buffer))
             }
         }
-        8 => match c {
+        LexerState::InString => match c {
             '"' => {
-                *status = 0;
+                *status = LexerState::Start;
                 Ok(emit_value(LexemeType::STRING, buffer))
             }
             '\\' => {
-                *status = 28;
+                *status = LexerState::Escape;
                 Ok(None)
             }
             _ => {
@@ -159,58 +205,72 @@ fn filter_nobuffer(
                 Ok(None)
             }
         },
-        10 => match c {
+        LexerState::Sharp => match c {
             't' | 'T' => {
-                *status = 0;
+                *status = LexerState::Start;
                 Ok(emit(LexemeType::TRUE))
             }
             'f' | 'F' => {
-                *status = 0;
+                *status = LexerState::Start;
                 Ok(emit(LexemeType::FALSE))
             }
             '(' => {
-                *status = 0;
+                *status = LexerState::Start;
                 Ok(emit(LexemeType::SHARP))
             }
             _ => Err(SrsError::new(SrsErrorKind::UnsupportedChar)),
         },
-        22 => {
+        LexerState::Lt => {
             if *c == '=' {
-                *status = 0;
+                *status = LexerState::Start;
                 Ok(emit(LexemeType::LTE))
             } else {
-                *status = 24;
+                *status = LexerState::LtDone;
                 Ok(emit(LexemeType::LT))
             }
         }
-        25 => {
+        LexerState::Gt => {
             if *c == '=' {
-                *status = 0;
+                *status = LexerState::Start;
                 Ok(emit(LexemeType::GTE))
             } else {
-                *status = 27;
+                *status = LexerState::GtDone;
                 Ok(emit(LexemeType::GT))
             }
         }
-        28 => match c {
+        LexerState::Escape => match c {
             '\\' | '"' => {
-                *status = 8;
+                *status = LexerState::InString;
                 buffer.push(*c);
                 Ok(None)
             }
             _ => Err(SrsError::new(SrsErrorKind::UnsupportedChar)),
         },
-        _ => Ok(None),
+        LexerState::IntegerDone
+        | LexerState::FloatDone
+        | LexerState::IdDone
+        | LexerState::LtDone
+        | LexerState::GtDone => Ok(None),
     }
 }
 
-fn filter_end(status: &u8, buffer: &str) -> SrsResult<Option<Lexeme>> {
+fn filter_end(status: &LexerState, buffer: &str) -> SrsResult<Option<Lexeme>> {
     match status {
-        1 => Ok(emit_value(LexemeType::INTEGER, buffer)),
-        2 => Ok(emit_value(LexemeType::FLOAT, buffer)),
-        5 => Ok(emit_value(LexemeType::ID, buffer)),
-        8 | 28 => Err(SrsError::new(SrsErrorKind::UncompletedString)),
-        _ => Ok(None),
+        LexerState::Integer => Ok(emit_value(LexemeType::INTEGER, buffer)),
+        LexerState::Float => Ok(emit_value(LexemeType::FLOAT, buffer)),
+        LexerState::Id => Ok(emit_value(LexemeType::ID, buffer)),
+        LexerState::InString | LexerState::Escape => {
+            Err(SrsError::new(SrsErrorKind::UncompletedString))
+        }
+        LexerState::Start
+        | LexerState::Sharp
+        | LexerState::Lt
+        | LexerState::Gt
+        | LexerState::IntegerDone
+        | LexerState::FloatDone
+        | LexerState::IdDone
+        | LexerState::LtDone
+        | LexerState::GtDone => Ok(None),
     }
 }
 
