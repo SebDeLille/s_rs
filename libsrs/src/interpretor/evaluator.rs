@@ -13,6 +13,8 @@ impl Evaluator {
         Evaluator { env }
     }
 
+    /// Single registry for primitive operators. Add a new operator here and
+    /// in `Evaluator::apply`; no other mapping is needed.
     fn register_primitives(env: &EnvRef) {
         env.define("+", SrsValue::Id("__add".to_string()));
         env.define("-", SrsValue::Id("__sub".to_string()));
@@ -46,23 +48,12 @@ impl Evaluator {
     }
 
     fn eval_id(&self, name: &str) -> SrsResult<SrsValue> {
-        self.env
-            .get(name)
-            .or_else(|| self.resolve_primitive(name))
-            .ok_or_else(|| {
-                SrsError::with_message(
-                    SrsErrorKind::UnknownIdentifier,
-                    format!("unknown identifier: {}", name),
-                )
-            })
-    }
-
-    fn resolve_primitive(&self, name: &str) -> Option<SrsValue> {
-        match name {
-            "+" | "-" | "*" | "/" => Some(SrsValue::Id(format!("__{}", name))),
-            "exit" => Some(SrsValue::Id("__exit".to_string())),
-            _ => None,
-        }
+        self.env.get(name).ok_or_else(|| {
+            SrsError::with_message(
+                SrsErrorKind::UnknownIdentifier,
+                format!("unknown identifier: {}", name),
+            )
+        })
     }
 
     fn resolve(&self, name: &str) -> SrsValue {

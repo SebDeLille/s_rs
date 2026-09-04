@@ -61,9 +61,9 @@ mutability; it currently holds only the primitive bindings.
 - Implement `Default` for public structs when a sensible default exists.
 - Unit tests live in the same file under `#[cfg(test)] mod tests`; cross-stage tests go
   in `libsrs/tests/r5rs/`, CLI behaviour in `srs/tests/cli.rs`.
-- Primitives are registered as `SrsValue::Id("__add")`-style markers and dispatched by
-  name in `Evaluator::apply`; add new primitives in both `register_primitives` and
-  `resolve_primitive`.
+- Primitives are registered as `SrsValue::Id("__add")`-style markers (single source of
+  truth: `Evaluator::register_primitives`) and dispatched by name in `Evaluator::apply`;
+  add a new primitive in both places.
 - Operator lexemes (`+`, `-`, ...) are translated to `SrsValue::Id("+")` by the translator.
 
 ## Current capabilities
