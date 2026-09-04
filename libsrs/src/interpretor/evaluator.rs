@@ -39,15 +39,27 @@ impl Evaluator {
         }
 
         if let SrsValue::Id(op) = &list[0] {
-            if op.as_str() == "define" {
-                return self.handle_define(&list[1..]);
+            let args = list.get(1..).unwrap_or(&[]);
+            if let Some(result) = self.eval_special_form(op, args)? {
+                return Ok(result);
             }
             let op = self.resolve(op);
-            let args = list.get(1..).unwrap_or(&[]);
             return self.apply(&op, args);
         }
 
         Err(SrsError::new(SrsErrorKind::UnknownType))
+    }
+
+    /// Single registry for special forms, i.e. operators whose arguments are
+    /// *not* pre-evaluated (unlike ordinary primitives dispatched through
+    /// `apply`). Add a new special form here only; no other mapping is
+    /// needed. Returns `Ok(None)` when `name` is not a special form, so the
+    /// caller falls back to ordinary identifier resolution + `apply`.
+    fn eval_special_form(&self, name: &str, args: &[SrsValue]) -> SrsResult<Option<SrsValue>> {
+        match name {
+            "define" => self.handle_define(args).map(Some),
+            _ => Ok(None),
+        }
     }
 
     fn handle_define(&self, args: &[SrsValue]) -> SrsResult<SrsValue> {
