@@ -39,12 +39,30 @@ impl Evaluator {
         }
 
         if let SrsValue::Id(op) = &list[0] {
+            if op.as_str() == "define" {
+                return self.handle_define(&list[1..]);
+            }
             let op = self.resolve(op);
             let args = list.get(1..).unwrap_or(&[]);
             return self.apply(&op, args);
         }
 
         Err(SrsError::new(SrsErrorKind::UnknownType))
+    }
+
+    fn handle_define(&self, args: &[SrsValue]) -> SrsResult<SrsValue> {
+        match args {
+            [name, value] => {
+                let name = name
+                    .as_id()
+                    .ok_or_else(|| SrsError::new(SrsErrorKind::TypeMismatch))?;
+                let value = self.eval(value)?;
+                self.env.define(name, value);
+                Ok(SrsValue::Nil)
+            }
+            [] | [_] => Err(SrsError::new(SrsErrorKind::NotEnoughArguments)),
+            _ => Err(SrsError::new(SrsErrorKind::TooManyArguments)),
+        }
     }
 
     fn eval_id(&self, name: &str) -> SrsResult<SrsValue> {
@@ -242,5 +260,70 @@ mod tests {
     #[test]
     fn exit_with_non_integer_fails() {
         assert_eq!(SrsErrorKind::TypeMismatch, eval_err("(exit #t)").kind().unwrap());
+    }
+
+    #[test]
+    fn define_returns_nil() {
+        assert_eq!(SrsValue::Nil, eval("(define answer 42)"));
+    }
+
+    #[test]
+    fn define_then_reread() {
+        let values = translate_all(get_lexemes("(define x 42) x").unwrap()).unwrap();
+        let evaluator = Evaluator::new();
+        assert_eq!(SrsValue::Nil, evaluator.eval(&values[0]).unwrap());
+        assert_eq!(SrsValue::Integer(42), evaluator.eval(&values[1]).unwrap());
+    }
+
+    #[test]
+    fn define_with_expression_initializer() {
+        let values =
+            translate_all(get_lexemes("(define x (+ 2 3)) x").unwrap()).unwrap();
+        let evaluator = Evaluator::new();
+        evaluator.eval(&values[0]).unwrap();
+        assert_eq!(SrsValue::Integer(5), evaluator.eval(&values[1]).unwrap());
+    }
+
+    #[test]
+    fn redefine_replaces_value() {
+        let values =
+            translate_all(get_lexemes("(define x 1) (define x 2) x").unwrap()).unwrap();
+        let evaluator = Evaluator::new();
+        assert_eq!(SrsValue::Nil, evaluator.eval(&values[0]).unwrap());
+        assert_eq!(SrsValue::Nil, evaluator.eval(&values[1]).unwrap());
+        assert_eq!(SrsValue::Integer(2), evaluator.eval(&values[2]).unwrap());
+    }
+
+    #[test]
+    fn multiple_forms_last_value_is_used() {
+        let values =
+            translate_all(get_lexemes("(define x 10) (+ x 5)").unwrap()).unwrap();
+        let evaluator = Evaluator::new();
+        assert_eq!(SrsValue::Nil, evaluator.eval(&values[0]).unwrap());
+        assert_eq!(SrsValue::Integer(15), evaluator.eval(&values[1]).unwrap());
+    }
+
+    #[test]
+    fn define_undefined_variable_fails() {
+        let error = eval_err("(define x unknown)");
+        assert_eq!(SrsErrorKind::UnknownIdentifier, error.kind().unwrap());
+    }
+
+    #[test]
+    fn define_non_identifier_name_fails() {
+        let error = eval_err("(define 1 2)");
+        assert_eq!(SrsErrorKind::TypeMismatch, error.kind().unwrap());
+    }
+
+    #[test]
+    fn define_with_missing_initializer_fails() {
+        let error = eval_err("(define x)");
+        assert_eq!(SrsErrorKind::NotEnoughArguments, error.kind().unwrap());
+    }
+
+    #[test]
+    fn define_with_too_many_args_fails() {
+        let error = eval_err("(define x 1 2)");
+        assert_eq!(SrsErrorKind::TooManyArguments, error.kind().unwrap());
     }
 }
