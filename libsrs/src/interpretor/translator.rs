@@ -14,14 +14,11 @@ pub fn translate_all(elements: Vec<Lexeme>) -> SrsResult<Vec<SrsValue>> {
 }
 
 fn translate(it: &mut Iter<'_, Lexeme>) -> SrsResult<Option<SrsValue>> {
-    while let Some(lexeme) = it.next() {
-        return if lexeme.lexeme_type == LexemeType::LPAR {
-            translate_list(it)
-        } else {
-            translate_atom(lexeme)
-        };
+    match it.next() {
+        Some(lexeme) if lexeme.lexeme_type == LexemeType::LPAR => translate_list(it),
+        Some(lexeme) => translate_atom(lexeme),
+        None => Ok(None),
     }
-    Ok(None)
 }
 
 fn translate_list(it: &mut Iter<'_, Lexeme>) -> SrsResult<Option<SrsValue>> {
