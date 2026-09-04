@@ -1,26 +1,39 @@
 # AGENTS.md
 
-## Project
+Minimal Scheme (R5RS subset) interpreter in Rust. Cargo workspace, no external
+runtime dependencies.
 
-Minimal Scheme interpreter in Rust.
-Workspace layout:
+## Workspace
 
-- `libsrs/` — core library
-  - `src/types/` — `SrsValue` enum, errors, shared environment (`Env`)
-  - `src/interpretor/` — lexer, parser (translator), evaluator
-- `srs/` — CLI binary
+| Path | Role |
+| --- | --- |
+| `libsrs/src/types/` | `SrsValue` (`core.rs`), errors (`error.rs`), scoped environment (`env.rs`) |
+| `libsrs/src/interpretor/` | `lexical_analyzer.rs` (lexer), `translator.rs` (parser), `evaluator.rs` |
+| `libsrs/tests/r5rs/` | Integration tests driving the full pipeline |
+| `libsrs/doc/` | Design notes (`lexical_analysis.md`: lexer state machine) |
+| `srs/` | CLI binary (`src/main.rs`) and CLI tests (`tests/cli.rs`) |
 
-## Build & Test
+## Build and test
 
 ```bash
 cargo build
-cargo test
-cargo run -- "(+ 2 3)"
+cargo test                      # whole workspace
+cargo test -p libsrs            # library unit + integration tests
+cargo run -p srs -- "(+ 2 3)"   # one-shot evaluation
+cargo run -p srs                # REPL
 ```
 
-## Data Model
+## Pipeline
 
-Single enum `SrsValue` (see `libsrs/src/types/core.rs`). No trait objects.
+`get_lexemes(&str) -> Vec<Lexeme>` → `translate_all(Vec<Lexeme>) -> Vec<SrsValue>`
+→ `Evaluator::eval(&SrsValue) -> SrsResult<SrsValue>`.
+
+Every stage returns `SrsResult<T>`; the CLI is a thin driver over these three calls.
+
+## Data model
+
+`SrsValue` (`libsrs/src/types/core.rs`) is the single value enum — no trait objects,
+no `Box<dyn ...>`:
 
 ```rust
 pub enum SrsValue {
@@ -35,47 +48,50 @@ pub enum SrsValue {
 }
 ```
 
-Removed legacy files: `types/{id,integer,list,string}.rs`, `interpretor/error.rs`.
+Errors are `SrsError::Error { kind: SrsErrorKind, message }` or `SrsError::Exit(i64)`;
+`Exit` is a control-flow signal, not a failure — the CLI turns it into a process exit code.
+
+`Env` is an `Rc`-linked chain (`Env::root()` / `Env::child(&parent)`) with interior
+mutability; it currently holds only the primitive bindings.
 
 ## Conventions
 
-- Short, explicit names.
-- `SrsResult<T>` for fallible operations.
-- `Default` implemented for public structs when sensible.
-- Tests live in the same file under `#[cfg(test)] mod tests`.
-- Operator lexemes (e.g. `+`, `-`) are translated to `SrsValue::Id("+")` etc.
+- Short, explicit names; no abbreviations beyond the `Srs` prefix.
+- Return `SrsResult<T>` for anything fallible; never `panic!`/`unwrap` in library code.
+- Implement `Default` for public structs when a sensible default exists.
+- Unit tests live in the same file under `#[cfg(test)] mod tests`; cross-stage tests go
+  in `libsrs/tests/r5rs/`, CLI behaviour in `srs/tests/cli.rs`.
+- Primitives are registered as `SrsValue::Id("__add")`-style markers and dispatched by
+  name in `Evaluator::apply`; add new primitives in both `register_primitives` and
+  `resolve_primitive`.
+- Operator lexemes (`+`, `-`, ...) are translated to `SrsValue::Id("+")` by the translator.
+
+## Current capabilities
+
+- **Lexer**: integers, floats, identifiers, strings, chars, booleans (`#t`/`#f`),
+  parentheses, quote, `#`, arithmetic and comparison tokens (`= < <= > >= not`).
+- **Parser**: nested s-expressions into `SrsValue::List(...)`; multiple top-level forms.
+- **Evaluator**: self-evaluating literals, arithmetic `+ - * /` with int/float coercion
+  and a division-by-zero guard, `exit` / `(exit <integer>)`.
+- **CLI**: REPL or one-shot argument; `exit`, `quit`, Ctrl-D and `(exit [code])` all quit.
+
+Comparison operators, `define`, `lambda`, `if`, `let` and quoting are lexed but **not**
+evaluated yet.
+
+## Extending the evaluator
+
+- Validate primitive argument counts and types explicitly (see `Evaluator::exit` for the
+  slice-pattern style).
+- Add a recursion/depth guard before introducing new recursive descent.
+- The interpreter is **not hardened**; read `SECURITY.md` before touching numeric
+  primitives, recursion or input handling.
+
+## Planned work
+
+See `ROADMAP.md`. Do not start a roadmap item without a matching GitHub issue.
 
 ## Contributing
 
-See `CONTRIBUTING.md` for branch and pull-request workflow.
-Prefer `gh` over raw `git` for GitHub operations (PRs, issues, checks).
-
-## Current Capabilities
-
-- Lexer: integers, floats, identifiers, strings, booleans (`#t`/`#f`), parentheses, operators, comparison tokens.
-- Parser: nested s-expressions into `SrsValue::List(...)`.
-- Evaluator: literals, primitive arithmetic `+ - * /` with int/float coercion, division-by-zero guard, primitive `exit` / `exit <integer>`.
-- CLI: interactive REPL or one-shot expression via first argument; `exit` / `quit` / Ctrl-D / `(exit [code])` supported.
-
-## Security Notes
-
-Known issues that must be addressed before untrusted input:
-
-- **Division by zero** can panic (integer `i64` division / `i64::MIN / -1`).
-- **No recursion depth limit** in parser/evaluator → stack overflow on deeply nested input.
-- **No input size limits** → OOM on huge expressions or huge token counts.
-- **No timeout / instruction budget** → trivial denial of service.
-
-When extending evaluator:
-
-- Validate primitive argument counts and types.
-- Add recursion/depth guards before calling recursively.
-- Never expose host filesystem, network, or env vars to interpreted code without explicit sandbox.
-
-## TODO
-
-- Define/lambda/if/let bindings
-- Comparison operators beyond lexing
-- Quote / quasiquote
-- Proper error locations (line/column)
-- Resource limits and division-by-zero guards
+- One branch per GitHub issue, changes land through a PR, never push to `main`
+  (see `CONTRIBUTING.md`).
+- Prefer `gh` over raw `git` for GitHub operations (PRs, issues, checks).
