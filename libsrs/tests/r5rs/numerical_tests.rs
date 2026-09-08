@@ -37,3 +37,67 @@ fn multiply_single_integer() {
 fn multiply_no_args_returns_identity() {
     assert!(matches!(eval_src("(*)"), SrsValue::Integer(1)));
 }
+
+#[test]
+fn sin_of_zero() {
+    match eval_src("(sin 0)") {
+        SrsValue::Float(f) => assert!((f - 0.0).abs() < 1e-9),
+        other => panic!("expected float, got {:?}", other),
+    }
+}
+
+#[test]
+fn cos_of_zero() {
+    match eval_src("(cos 0)") {
+        SrsValue::Float(f) => assert!((f - 1.0).abs() < 1e-9),
+        other => panic!("expected float, got {:?}", other),
+    }
+}
+
+#[test]
+fn tan_of_zero() {
+    match eval_src("(tan 0)") {
+        SrsValue::Float(f) => assert!((f - 0.0).abs() < 1e-9),
+        other => panic!("expected float, got {:?}", other),
+    }
+}
+
+#[test]
+fn atan_of_zero() {
+    match eval_src("(atan 0)") {
+        SrsValue::Float(f) => assert!((f - 0.0).abs() < 1e-9),
+        other => panic!("expected float, got {:?}", other),
+    }
+}
+
+#[test]
+fn sin_of_one() {
+    match eval_src("(sin 1)") {
+        SrsValue::Float(f) => assert!((f - 1f64.sin()).abs() < 1e-9),
+        other => panic!("expected float, got {:?}", other),
+    }
+}
+
+#[test]
+fn cos_of_one() {
+    match eval_src("(cos 1)") {
+        SrsValue::Float(f) => assert!((f - 1f64.cos()).abs() < 1e-9),
+        other => panic!("expected float, got {:?}", other),
+    }
+}
+
+#[test]
+fn tan_of_one() {
+    match eval_src("(tan 1)") {
+        SrsValue::Float(f) => assert!((f - 1f64.tan()).abs() < 1e-9),
+        other => panic!("expected float, got {:?}", other),
+    }
+}
+
+#[test]
+fn atan_of_one() {
+    match eval_src("(atan 1)") {
+        SrsValue::Float(f) => assert!((f - 1f64.atan()).abs() < 1e-9),
+        other => panic!("expected float, got {:?}", other),
+    }
+}
