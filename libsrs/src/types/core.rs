@@ -108,3 +108,58 @@ pub enum PromiseState {
     Forced(SrsValue),
     Delayed(Vec<SrsValue>, Rc<Env>),
 }
+
+impl fmt::Display for SrsValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SrsValue::Integer(n) => write!(f, "{}", n),
+            SrsValue::Float(x) => write!(f, "{}", x),
+            SrsValue::Rational(num, den) => write!(f, "{}/{}", num, den),
+            SrsValue::Boolean(true) => write!(f, "#t"),
+            SrsValue::Boolean(false) => write!(f, "#f"),
+            SrsValue::Character(c) => write!(f, "#\\{}", c),
+            SrsValue::String(s) => write!(f, "{:?}", s.borrow()),
+            SrsValue::Symbol(name) => write!(f, "{}", name),
+            SrsValue::Nil => write!(f, "()"),
+            SrsValue::Pair(_) => {
+                write!(f, "(")?;
+                let mut current = self.clone();
+                let mut first = true;
+                loop {
+                    match current {
+                        SrsValue::Pair(cell) => {
+                            let (car, cdr) = cell.borrow().clone();
+                            if !first {
+                                write!(f, " ")?;
+                            }
+                            first = false;
+                            write!(f, "{}", car)?;
+                            current = cdr;
+                        }
+                        SrsValue::Nil => break,
+                        other => {
+                            write!(f, " . {}", other)?;
+                            break;
+                        }
+                    }
+                }
+                write!(f, ")")
+            }
+            SrsValue::Vector(v) => {
+                write!(f, "#(")?;
+                for (i, item) in v.borrow().iter().enumerate() {
+                    if i > 0 {
+                        write!(f, " ")?;
+                    }
+                    write!(f, "{}", item)?;
+                }
+                write!(f, ")")
+            }
+            SrsValue::Unspecified => Ok(()),
+            SrsValue::Eof => write!(f, "#<eof>"),
+            SrsValue::Procedure(_) => write!(f, "#<procedure>"),
+            SrsValue::Native(native) => write!(f, "#<procedure:{}>", native.name),
+            SrsValue::Promise(_) => write!(f, "#<promise>"),
+        }
+    }
+}
