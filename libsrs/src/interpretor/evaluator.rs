@@ -175,6 +175,20 @@ pub fn global_env() -> Rc<Env> {
             func: native_cdr,
         }),
     );
+    env.define(
+        "apply".to_string(),
+        SrsValue::Native(Native {
+            name: "apply",
+            func: native_apply,
+        }),
+    );
+    env.define(
+        "map".to_string(),
+        SrsValue::Native(Native {
+            name: "map",
+            func: native_map,
+        }),
+    );
     env
 }
 
@@ -694,6 +708,45 @@ fn native_cdr(args: &[SrsValue]) -> Result<SrsValue, String> {
         [_] => Err("wrong type: expected pair".to_string()),
         [] => Err("not enough arguments to cdr".to_string()),
         _ => Err("too many arguments to cdr".to_string()),
+    }
+}
+
+/// `(apply proc arg1 ... args)`: applies `proc` to a list of arguments
+/// formed by prepending `arg1 ...` (if any) onto the final `args` list,
+/// which must itself be a proper list (R5RS section 6.4).
+fn native_apply(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [] => Err("not enough arguments to apply".to_string()),
+        [_] => Err("not enough arguments to apply".to_string()),
+        [proc, rest @ ..] => {
+            let (leading, last) = rest.split_at(rest.len() - 1);
+            let mut call_args = leading.to_vec();
+            call_args.extend(list_to_vec(&last[0]).map_err(|e| e.to_string())?);
+            apply(proc, &call_args).map_err(|e| e.to_string())
+        }
+    }
+}
+
+/// `(map proc list1 list2 ...)`: applies `proc` element-wise to one or more
+/// lists, returning a new list of the results. Traversal stops as soon as
+/// the shortest list is exhausted (R5RS section 6.4).
+fn native_map(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [] => Err("not enough arguments to map".to_string()),
+        [_] => Err("not enough arguments to map".to_string()),
+        [proc, lists @ ..] => {
+            let mut vecs = Vec::with_capacity(lists.len());
+            for list in lists {
+                vecs.push(list_to_vec(list).map_err(|e| e.to_string())?);
+            }
+            let len = vecs.iter().map(|v| v.len()).min().unwrap_or(0);
+            let mut results = Vec::with_capacity(len);
+            for i in 0..len {
+                let call_args: Vec<SrsValue> = vecs.iter().map(|v| v[i].clone()).collect();
+                results.push(apply(proc, &call_args).map_err(|e| e.to_string())?);
+            }
+            Ok(vec_to_list(results))
+        }
     }
 }
 
@@ -1359,5 +1412,84 @@ mod tests {
     #[test]
     fn quasiquote_too_many_args_fails() {
         assert!(eval_src("(quasiquote 1 2)").is_err());
+    }
+
+    #[test]
+    fn apply_native_with_list_args() {
+        assert!(matches!(ok("(apply + '(1 2 3))"), SrsValue::Integer(6)));
+    }
+
+    #[test]
+    fn apply_with_leading_args_and_list() {
+        assert!(matches!(ok("(apply + 1 2 '(3 4))"), SrsValue::Integer(10)));
+    }
+
+    #[test]
+    fn apply_with_lambda() {
+        assert!(matches!(
+            ok("(apply (lambda (a b) (* a b)) '(6 7))"),
+            SrsValue::Integer(42)
+        ));
+    }
+
+    #[test]
+    fn apply_last_arg_not_a_list_fails() {
+        assert!(eval_src("(apply + 1)").is_err());
+    }
+
+    #[test]
+    fn apply_no_args_fails() {
+        assert!(eval_src("(apply)").is_err());
+    }
+
+    #[test]
+    fn apply_one_arg_fails() {
+        assert!(eval_src("(apply +)").is_err());
+    }
+
+    #[test]
+    fn map_single_list() {
+        let v = ok("(map (lambda (x) (* x x)) '(1 2 3))");
+        assert!(matches!(pair_car(&v), SrsValue::Integer(1)));
+        let rest = pair_cdr(&v);
+        assert!(matches!(pair_car(&rest), SrsValue::Integer(4)));
+        let rest = pair_cdr(&rest);
+        assert!(matches!(pair_car(&rest), SrsValue::Integer(9)));
+        assert!(matches!(pair_cdr(&rest), SrsValue::Nil));
+    }
+
+    #[test]
+    fn map_multiple_lists() {
+        let v = ok("(map + '(1 2 3) '(10 20 30))");
+        assert!(matches!(pair_car(&v), SrsValue::Integer(11)));
+        let rest = pair_cdr(&v);
+        assert!(matches!(pair_car(&rest), SrsValue::Integer(22)));
+        let rest = pair_cdr(&rest);
+        assert!(matches!(pair_car(&rest), SrsValue::Integer(33)));
+        assert!(matches!(pair_cdr(&rest), SrsValue::Nil));
+    }
+
+    #[test]
+    fn map_stops_at_shortest_list() {
+        let v = ok("(map + '(1 2 3) '(10 20))");
+        assert!(matches!(pair_car(&v), SrsValue::Integer(11)));
+        let rest = pair_cdr(&v);
+        assert!(matches!(pair_car(&rest), SrsValue::Integer(22)));
+        assert!(matches!(pair_cdr(&rest), SrsValue::Nil));
+    }
+
+    #[test]
+    fn map_empty_list_returns_empty_list() {
+        assert!(matches!(ok("(map + '())"), SrsValue::Nil));
+    }
+
+    #[test]
+    fn map_no_args_fails() {
+        assert!(eval_src("(map)").is_err());
+    }
+
+    #[test]
+    fn map_one_arg_fails() {
+        assert!(eval_src("(map +)").is_err());
     }
 }
