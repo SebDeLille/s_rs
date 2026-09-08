@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 
@@ -151,6 +152,27 @@ pub fn global_env() -> Rc<Env> {
         SrsValue::Native(Native {
             name: "atan",
             func: native_atan,
+        }),
+    );
+    env.define(
+        "cons".to_string(),
+        SrsValue::Native(Native {
+            name: "cons",
+            func: native_cons,
+        }),
+    );
+    env.define(
+        "car".to_string(),
+        SrsValue::Native(Native {
+            name: "car",
+            func: native_car,
+        }),
+    );
+    env.define(
+        "cdr".to_string(),
+        SrsValue::Native(Native {
+            name: "cdr",
+            func: native_cdr,
         }),
     );
     env
@@ -371,7 +393,7 @@ fn apply_lambda(lambda: &Rc<Lambda>, args: &[SrsValue]) -> Result<SrsValue, Eval
 /// `Nil`).
 fn vec_to_list(values: Vec<SrsValue>) -> SrsValue {
     values.into_iter().rev().fold(SrsValue::Nil, |acc, v| {
-        SrsValue::Pair(Rc::new(std::cell::RefCell::new((v, acc))))
+        SrsValue::Pair(Rc::new(RefCell::new((v, acc))))
     })
 }
 
@@ -536,6 +558,38 @@ fn native_atan(args: &[SrsValue]) -> Result<SrsValue, String> {
         [] => Err("not enough arguments to atan".to_string()),
         [only] => numeric_to_f64(only).map(|n| SrsValue::Float(n.atan())),
         _ => Err("too many arguments to atan".to_string()),
+    }
+}
+
+/// `(cons car cdr)`: allocates a fresh mutable pair.
+fn native_cons(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [car, cdr] => Ok(SrsValue::Pair(Rc::new(RefCell::new((
+            car.clone(),
+            cdr.clone(),
+        ))))),
+        [] | [_] => Err("not enough arguments to cons".to_string()),
+        _ => Err("too many arguments to cons".to_string()),
+    }
+}
+
+/// `(car pair)`: returns the first element of a pair.
+fn native_car(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [SrsValue::Pair(cell)] => Ok(cell.borrow().0.clone()),
+        [_] => Err("wrong type: expected pair".to_string()),
+        [] => Err("not enough arguments to car".to_string()),
+        _ => Err("too many arguments to car".to_string()),
+    }
+}
+
+/// `(cdr pair)`: returns the second element of a pair.
+fn native_cdr(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [SrsValue::Pair(cell)] => Ok(cell.borrow().1.clone()),
+        [_] => Err("wrong type: expected pair".to_string()),
+        [] => Err("not enough arguments to cdr".to_string()),
+        _ => Err("too many arguments to cdr".to_string()),
     }
 }
 
@@ -1017,5 +1071,78 @@ mod tests {
     #[test]
     fn if_too_many_args_fails() {
         assert!(eval_src("(if #t 1 2 3)").is_err());
+    }
+
+    #[test]
+    fn cons_creates_a_pair() {
+        assert!(matches!(ok("(cons 1 2)"), SrsValue::Pair(_)));
+    }
+
+    #[test]
+    fn car_of_cons() {
+        assert!(matches!(ok("(car (cons 1 2))"), SrsValue::Integer(1)));
+    }
+
+    #[test]
+    fn cdr_of_cons() {
+        assert!(matches!(ok("(cdr (cons 1 2))"), SrsValue::Integer(2)));
+    }
+
+    #[test]
+    fn car_of_nested_cons() {
+        assert!(matches!(ok("(car (cons (cons 1 2) 3))"), SrsValue::Pair(_)));
+    }
+
+    #[test]
+    fn cdr_of_nested_cons_is_a_pair() {
+        assert!(matches!(
+            ok("(cdr (cons 1 (cons 2 (cons 3 (cons 4 4)))))"),
+            SrsValue::Pair(_)
+        ));
+    }
+
+    #[test]
+    fn cons_no_args_fails() {
+        assert!(eval_src("(cons)").is_err());
+    }
+
+    #[test]
+    fn cons_one_arg_fails() {
+        assert!(eval_src("(cons 1)").is_err());
+    }
+
+    #[test]
+    fn cons_too_many_args_fails() {
+        assert!(eval_src("(cons 1 2 3)").is_err());
+    }
+
+    #[test]
+    fn car_no_args_fails() {
+        assert!(eval_src("(car)").is_err());
+    }
+
+    #[test]
+    fn car_too_many_args_fails() {
+        assert!(eval_src("(car (cons 1 2) (cons 3 4))").is_err());
+    }
+
+    #[test]
+    fn car_wrong_type_fails() {
+        assert!(eval_src("(car 1)").is_err());
+    }
+
+    #[test]
+    fn cdr_no_args_fails() {
+        assert!(eval_src("(cdr)").is_err());
+    }
+
+    #[test]
+    fn cdr_too_many_args_fails() {
+        assert!(eval_src("(cdr (cons 1 2) (cons 3 4))").is_err());
+    }
+
+    #[test]
+    fn cdr_wrong_type_fails() {
+        assert!(eval_src("(cdr 1)").is_err());
     }
 }
