@@ -1,7 +1,7 @@
 use std::fmt;
 use std::rc::Rc;
 
-use crate::types::core::{Env, Native, SrsValue};
+use crate::types::core::{Env, Lambda, Native, SrsValue};
 
 /// The specific reason an [`EvalError`] was raised.
 #[derive(Debug, Clone, PartialEq)]
@@ -107,10 +107,12 @@ fn eval_combination(expr: &SrsValue, env: &Rc<Env>) -> Result<SrsValue, EvalErro
         return Ok(SrsValue::Nil);
     }
 
-    if let SrsValue::Symbol(op) = &items[0]
-        && op == "define"
-    {
-        return eval_define(&items[1..], env);
+    if let SrsValue::Symbol(op) = &items[0] {
+        match op.as_str() {
+            "define" => return eval_define(&items[1..], env),
+            "lambda" => return eval_lambda(&items[1..], env),
+            _ => {}
+        }
     }
 
     let proc = eval(&items[0], env)?;
@@ -139,15 +141,102 @@ fn eval_define(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> 
     }
 }
 
-/// Applies a callable [`SrsValue`] (currently only [`SrsValue::Native`]) to
-/// already-evaluated arguments.
+/// Handles `(lambda <params> <body>...)`, capturing the current environment
+/// and producing a [`SrsValue::Procedure`].
+fn eval_lambda(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
+    match args {
+        [] => err(EvalErrorKind::NotEnoughArguments),
+        [_] => err(EvalErrorKind::NotEnoughArguments),
+        [params_spec, body @ ..] => {
+            let (params, rest) = parse_params(params_spec)?;
+            Ok(SrsValue::Procedure(Rc::new(Lambda {
+                params,
+                rest,
+                body: body.to_vec(),
+                env: env.clone(),
+            })))
+        }
+    }
+}
+
+/// Parses a lambda parameter spec into a fixed parameter list and an
+/// optional rest parameter name. Accepts a bare symbol (fully variadic), a
+/// proper list of symbols, or a dotted list ending in a rest symbol.
+fn parse_params(spec: &SrsValue) -> Result<(Vec<String>, Option<String>), EvalError> {
+    match spec {
+        SrsValue::Symbol(name) => Ok((Vec::new(), Some(name.clone()))),
+        SrsValue::Nil => Ok((Vec::new(), None)),
+        SrsValue::Pair(_) => {
+            let mut params = Vec::new();
+            let mut current = spec.clone();
+            loop {
+                match current {
+                    SrsValue::Nil => return Ok((params, None)),
+                    SrsValue::Symbol(name) => return Ok((params, Some(name))),
+                    SrsValue::Pair(cell) => {
+                        let (car, cdr) = cell.borrow().clone();
+                        match car {
+                            SrsValue::Symbol(name) => params.push(name),
+                            _ => return err(EvalErrorKind::WrongType),
+                        }
+                        current = cdr;
+                    }
+                    _ => return err(EvalErrorKind::WrongType),
+                }
+            }
+        }
+        _ => err(EvalErrorKind::WrongType),
+    }
+}
+
+/// Applies a callable [`SrsValue`] ([`SrsValue::Native`] or
+/// [`SrsValue::Procedure`]) to already-evaluated arguments.
 fn apply(proc: &SrsValue, args: &[SrsValue]) -> Result<SrsValue, EvalError> {
     match proc {
         SrsValue::Native(native) => (native.func)(args).map_err(|msg| EvalError {
             kind: EvalErrorKind::Native(msg),
         }),
+        SrsValue::Procedure(lambda) => apply_lambda(lambda, args),
         _ => err(EvalErrorKind::NotAProcedure),
     }
+}
+
+/// Binds `args` to a lambda's parameters in a fresh child environment and
+/// evaluates its body in sequence, returning the value of the last
+/// expression (implicit `begin`).
+fn apply_lambda(lambda: &Rc<Lambda>, args: &[SrsValue]) -> Result<SrsValue, EvalError> {
+    if args.len() < lambda.params.len()
+        || (lambda.rest.is_none() && args.len() > lambda.params.len())
+    {
+        return if args.len() < lambda.params.len() {
+            err(EvalErrorKind::NotEnoughArguments)
+        } else {
+            err(EvalErrorKind::TooManyArguments)
+        };
+    }
+
+    let call_env = Env::new(Some(lambda.env.clone()));
+    for (name, value) in lambda.params.iter().zip(args.iter()) {
+        call_env.define(name.clone(), value.clone());
+    }
+    if let Some(rest_name) = &lambda.rest {
+        let rest_values = args[lambda.params.len()..].to_vec();
+        call_env.define(rest_name.clone(), vec_to_list(rest_values));
+    }
+
+    let mut result = SrsValue::Unspecified;
+    for expr in &lambda.body {
+        result = eval(expr, &call_env)?;
+    }
+    Ok(result)
+}
+
+/// Converts a `Vec<SrsValue>` into a proper list (`Pair` chain ending in
+/// `Nil`).
+fn vec_to_list(values: Vec<SrsValue>) -> SrsValue {
+    values.into_iter().rev().fold(SrsValue::Nil, |acc, v| {
+        SrsValue::Pair(Rc::new(std::cell::RefCell::new((v, acc))))
+    })
 }
 
 /// Converts a proper list (`SrsValue::Pair` chain ending in `SrsValue::Nil`)
@@ -389,5 +478,97 @@ mod tests {
     #[test]
     fn calling_a_non_procedure_fails() {
         assert!(eval_src("(1 2 3)").is_err());
+    }
+
+    #[test]
+    fn lambda_produces_a_procedure() {
+        assert!(matches!(ok("(lambda (x) x)"), SrsValue::Procedure(_)));
+    }
+
+    #[test]
+    fn calling_a_lambda_applies_it() {
+        assert!(matches!(
+            ok("((lambda (x) (+ x 1)) 41)"),
+            SrsValue::Integer(42)
+        ));
+    }
+
+    #[test]
+    fn define_then_call_lambda() {
+        assert!(matches!(
+            ok("(define square (lambda (x) (* x x))) (square 5)"),
+            SrsValue::Integer(25)
+        ));
+    }
+
+    #[test]
+    fn lambda_multiple_params() {
+        assert!(matches!(
+            ok("((lambda (a b c) (+ a b c)) 1 2 3)"),
+            SrsValue::Integer(6)
+        ));
+    }
+
+    #[test]
+    fn lambda_body_evaluates_in_sequence() {
+        assert!(matches!(
+            ok("(define x 0) ((lambda () (define x 1) (define x 2) x))"),
+            SrsValue::Integer(2)
+        ));
+    }
+
+    #[test]
+    fn lambda_closes_over_environment() {
+        assert!(matches!(
+            ok("(define make-adder (lambda (n) (lambda (x) (+ x n)))) \
+                (define add5 (make-adder 5)) (add5 10)"),
+            SrsValue::Integer(15)
+        ));
+    }
+
+    #[test]
+    fn lambda_variadic_all_args() {
+        assert!(matches!(
+            ok("((lambda args args) 1 2 3)"),
+            SrsValue::Pair(_)
+        ));
+    }
+
+    #[test]
+    fn lambda_dotted_rest_param() {
+        assert!(matches!(
+            ok("((lambda (a . rest) rest) 1 2 3)"),
+            SrsValue::Pair(_)
+        ));
+    }
+
+    #[test]
+    fn lambda_dotted_rest_param_empty() {
+        assert!(matches!(ok("((lambda (a . rest) rest) 1)"), SrsValue::Nil));
+    }
+
+    #[test]
+    fn lambda_no_params() {
+        assert!(matches!(ok("((lambda () 42))"), SrsValue::Integer(42)));
+    }
+
+    #[test]
+    fn lambda_too_few_args_fails() {
+        assert!(eval_src("((lambda (a b) a) 1)").is_err());
+    }
+
+    #[test]
+    fn lambda_too_many_args_fails() {
+        assert!(eval_src("((lambda (a) a) 1 2)").is_err());
+    }
+
+    #[test]
+    fn lambda_missing_body_fails() {
+        assert!(eval_src("(lambda (x))").is_err());
+    }
+
+    #[test]
+    fn lambda_non_symbol_param_fails() {
+        assert!(eval_src("(lambda (1) 1)").is_err());
     }
 }
