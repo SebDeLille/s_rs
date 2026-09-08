@@ -205,6 +205,8 @@ fn eval_combination(expr: &SrsValue, env: &Rc<Env>) -> Result<SrsValue, EvalErro
             "lambda" => return eval_lambda(&items[1..], env),
             "let" => return eval_let(&items[1..], env),
             "if" => return eval_if(&items[1..], env),
+            "quote" => return eval_quote(&items[1..]),
+            "quasiquote" => return eval_quasiquote(&items[1..], env),
             _ => {}
         }
     }
@@ -310,6 +312,108 @@ fn eval_if(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
         [] | [_] => err(EvalErrorKind::NotEnoughArguments),
         _ => err(EvalErrorKind::TooManyArguments),
     }
+}
+
+/// Handles `(quote datum)`, returning `datum` unevaluated.
+fn eval_quote(args: &[SrsValue]) -> Result<SrsValue, EvalError> {
+    match args {
+        [datum] => Ok(datum.clone()),
+        [] => err(EvalErrorKind::NotEnoughArguments),
+        _ => err(EvalErrorKind::TooManyArguments),
+    }
+}
+
+/// Handles `(quasiquote datum)`, returning `datum` with any nested
+/// `(unquote expr)` replaced by the evaluated `expr`, and any
+/// `(unquote-splicing expr)` appearing in a list position spliced in.
+/// Nested `quasiquote`s increase the nesting level so that only `unquote`
+/// forms at the matching level are evaluated (R5RS section 4.2.6).
+fn eval_quasiquote(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
+    match args {
+        [datum] => quasiquote(datum, env, 1),
+        [] => err(EvalErrorKind::NotEnoughArguments),
+        _ => err(EvalErrorKind::TooManyArguments),
+    }
+}
+
+/// Recursively expands a quasiquoted template at the given nesting `depth`.
+fn quasiquote(expr: &SrsValue, env: &Rc<Env>, depth: u32) -> Result<SrsValue, EvalError> {
+    match expr {
+        SrsValue::Pair(cell) => {
+            let (car, cdr) = cell.borrow().clone();
+
+            if let SrsValue::Symbol(name) = &car {
+                if name == "unquote" {
+                    let arg = extract_single(&cdr)?;
+                    return if depth == 1 {
+                        eval(&arg, env)
+                    } else {
+                        Ok(unary_form("unquote", quasiquote(&arg, env, depth - 1)?))
+                    };
+                }
+                if name == "quasiquote" {
+                    let arg = extract_single(&cdr)?;
+                    return Ok(unary_form("quasiquote", quasiquote(&arg, env, depth + 1)?));
+                }
+            }
+
+            if let SrsValue::Pair(car_cell) = &car {
+                let (car_car, car_cdr) = car_cell.borrow().clone();
+                if matches!(&car_car, SrsValue::Symbol(name) if name == "unquote-splicing") {
+                    let arg = extract_single(&car_cdr)?;
+                    return if depth == 1 {
+                        let spliced = eval(&arg, env)?;
+                        let rest = quasiquote(&cdr, env, depth)?;
+                        append_list(spliced, rest)
+                    } else {
+                        let new_car =
+                            unary_form("unquote-splicing", quasiquote(&arg, env, depth - 1)?);
+                        let rest = quasiquote(&cdr, env, depth)?;
+                        Ok(SrsValue::Pair(Rc::new(RefCell::new((new_car, rest)))))
+                    };
+                }
+            }
+
+            let new_car = quasiquote(&car, env, depth)?;
+            let new_cdr = quasiquote(&cdr, env, depth)?;
+            Ok(SrsValue::Pair(Rc::new(RefCell::new((new_car, new_cdr)))))
+        }
+        other => Ok(other.clone()),
+    }
+}
+
+/// Extracts the single argument of a one-argument special form like
+/// `(unquote x)`, i.e. expects `spec` to be `(x . ())`.
+fn extract_single(spec: &SrsValue) -> Result<SrsValue, EvalError> {
+    match spec {
+        SrsValue::Pair(cell) => {
+            let (arg, rest) = cell.borrow().clone();
+            match rest {
+                SrsValue::Nil => Ok(arg),
+                _ => err(EvalErrorKind::WrongType),
+            }
+        }
+        _ => err(EvalErrorKind::WrongType),
+    }
+}
+
+/// Builds `(symbol value)`, e.g. `unary_form("unquote", x)` -> `(unquote x)`.
+fn unary_form(symbol: &str, value: SrsValue) -> SrsValue {
+    SrsValue::Pair(Rc::new(RefCell::new((
+        SrsValue::Symbol(symbol.to_string()),
+        SrsValue::Pair(Rc::new(RefCell::new((value, SrsValue::Nil)))),
+    ))))
+}
+
+/// Appends a proper list `list` in front of `tail`, e.g. splicing
+/// `unquote-splicing` results into a surrounding quasiquoted list.
+fn append_list(list: SrsValue, tail: SrsValue) -> Result<SrsValue, EvalError> {
+    let items = list_to_vec(&list)?;
+    let mut result = tail;
+    for item in items.into_iter().rev() {
+        result = SrsValue::Pair(Rc::new(RefCell::new((item, result))));
+    }
+    Ok(result)
 }
 
 /// R5RS truthiness: every value is true except `#f`.
@@ -1144,5 +1248,116 @@ mod tests {
     #[test]
     fn cdr_wrong_type_fails() {
         assert!(eval_src("(cdr 1)").is_err());
+    }
+
+    fn pair_car(value: &SrsValue) -> SrsValue {
+        match value {
+            SrsValue::Pair(cell) => cell.borrow().0.clone(),
+            other => panic!("expected pair, got {:?}", other),
+        }
+    }
+
+    fn pair_cdr(value: &SrsValue) -> SrsValue {
+        match value {
+            SrsValue::Pair(cell) => cell.borrow().1.clone(),
+            other => panic!("expected pair, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn quote_returns_symbol_unevaluated() {
+        assert!(matches!(ok("(quote x)"), SrsValue::Symbol(s) if s == "x"));
+    }
+
+    #[test]
+    fn quote_shorthand_returns_symbol_unevaluated() {
+        assert!(matches!(ok("'x"), SrsValue::Symbol(s) if s == "x"));
+    }
+
+    #[test]
+    fn quote_returns_list_unevaluated() {
+        let v = ok("'(1 2 3)");
+        assert!(matches!(pair_car(&v), SrsValue::Integer(1)));
+        let rest = pair_cdr(&v);
+        assert!(matches!(pair_car(&rest), SrsValue::Integer(2)));
+    }
+
+    #[test]
+    fn quote_does_not_evaluate_operator_looking_symbol() {
+        // '(+ 1 2) must stay the list (+ 1 2), not evaluate to 3.
+        let v = ok("'(+ 1 2)");
+        assert!(matches!(pair_car(&v), SrsValue::Symbol(s) if s == "+"));
+    }
+
+    #[test]
+    fn quote_no_args_fails() {
+        assert!(eval_src("(quote)").is_err());
+    }
+
+    #[test]
+    fn quote_too_many_args_fails() {
+        assert!(eval_src("(quote 1 2)").is_err());
+    }
+
+    #[test]
+    fn quasiquote_without_unquote_behaves_like_quote() {
+        let v = ok("`(1 2 3)");
+        assert!(matches!(pair_car(&v), SrsValue::Integer(1)));
+    }
+
+    #[test]
+    fn quasiquote_evaluates_unquoted_expr() {
+        let v = ok("(define x 5) `(a ,x c)");
+        let rest = pair_cdr(&v);
+        assert!(matches!(pair_car(&rest), SrsValue::Integer(5)));
+    }
+
+    #[test]
+    fn quasiquote_evaluates_unquoted_computation() {
+        let v = ok("`(1 ,(+ 1 1) 3)");
+        let rest = pair_cdr(&v);
+        assert!(matches!(pair_car(&rest), SrsValue::Integer(2)));
+    }
+
+    #[test]
+    fn quasiquote_splices_unquote_splicing() {
+        let v = ok("(define xs (cons 2 (cons 3 '()))) `(1 ,@xs 4)");
+        assert!(matches!(pair_car(&v), SrsValue::Integer(1)));
+        let rest = pair_cdr(&v);
+        assert!(matches!(pair_car(&rest), SrsValue::Integer(2)));
+        let rest = pair_cdr(&rest);
+        assert!(matches!(pair_car(&rest), SrsValue::Integer(3)));
+        let rest = pair_cdr(&rest);
+        assert!(matches!(pair_car(&rest), SrsValue::Integer(4)));
+        assert!(matches!(pair_cdr(&rest), SrsValue::Nil));
+    }
+
+    #[test]
+    fn quasiquote_shorthand_matches_form() {
+        let v1 = ok("`(a ,(+ 1 2))");
+        let v2 = ok("(quasiquote (a (unquote (+ 1 2))))");
+        assert!(matches!(pair_car(&v1), SrsValue::Symbol(s) if s == "a"));
+        assert!(matches!(pair_car(&v2), SrsValue::Symbol(s) if s == "a"));
+        assert!(matches!(pair_car(&pair_cdr(&v1)), SrsValue::Integer(3)));
+        assert!(matches!(pair_car(&pair_cdr(&v2)), SrsValue::Integer(3)));
+    }
+
+    #[test]
+    fn nested_quasiquote_defers_inner_unquote() {
+        // At depth 2, the inner `,x` is not evaluated; the whole thing stays
+        // quoted data: (quasiquote (unquote x)).
+        let v = ok("(define x 1) `(a `(b ,x))");
+        let inner = pair_car(&pair_cdr(&v));
+        assert!(matches!(pair_car(&inner), SrsValue::Symbol(s) if s == "quasiquote"));
+    }
+
+    #[test]
+    fn quasiquote_no_args_fails() {
+        assert!(eval_src("(quasiquote)").is_err());
+    }
+
+    #[test]
+    fn quasiquote_too_many_args_fails() {
+        assert!(eval_src("(quasiquote 1 2)").is_err());
     }
 }
