@@ -1,5 +1,88 @@
+use std::fmt;
 use std::iter::Peekable;
 use std::str::Chars;
+
+/// Position of a character in the source, 1-based for both line and column
+/// (matching common editor conventions).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Position {
+    pub line: usize,
+    pub column: usize,
+}
+
+impl fmt::Display for Position {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}", self.line, self.column)
+    }
+}
+
+/// The specific reason a [`LexError`] was raised.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LexErrorKind {
+    UnexpectedChar(char),
+    UnexpectedSharpDispatch(char),
+    InvalidDotDotSequence(char),
+    ExpectedExponentDigit(char),
+    UnknownCharName(String),
+    UnknownEscape(char),
+    InvalidInteger(String),
+    InvalidFloat(String),
+    UnterminatedCharacter,
+    UnterminatedSharpDispatch,
+    UnterminatedBlockComment,
+    UnterminatedString,
+    UnterminatedExponent,
+    /// Internal invariant violation: the block-comment nesting counter
+    /// underflowed. This should be unreachable given the state machine's
+    /// design; if it triggers, it indicates a bug in the lexer itself
+    /// rather than in the input source.
+    BlockCommentDepthUnderflow,
+}
+
+impl fmt::Display for LexErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LexErrorKind::UnexpectedChar(c) => write!(f, "unexpected character '{}'", c),
+            LexErrorKind::UnexpectedSharpDispatch(c) => {
+                write!(f, "unexpected sharp dispatch '#{}'", c)
+            }
+            LexErrorKind::InvalidDotDotSequence(c) => write!(f, "invalid token '..{}'", c),
+            LexErrorKind::ExpectedExponentDigit(c) => {
+                write!(f, "expected exponent digit, got '{}'", c)
+            }
+            LexErrorKind::UnknownCharName(name) => {
+                write!(f, "unknown character name '#\\{}'", name)
+            }
+            LexErrorKind::UnknownEscape(c) => write!(f, "unknown escape sequence '\\{}'", c),
+            LexErrorKind::InvalidInteger(token) => write!(f, "invalid integer literal '{}'", token),
+            LexErrorKind::InvalidFloat(token) => write!(f, "invalid float literal '{}'", token),
+            LexErrorKind::UnterminatedCharacter => write!(f, "unterminated character literal"),
+            LexErrorKind::UnterminatedSharpDispatch => write!(f, "unterminated sharp dispatch"),
+            LexErrorKind::UnterminatedBlockComment => write!(f, "unterminated block comment"),
+            LexErrorKind::UnterminatedString => write!(f, "unterminated string literal"),
+            LexErrorKind::UnterminatedExponent => write!(f, "unterminated exponent"),
+            LexErrorKind::BlockCommentDepthUnderflow => {
+                write!(f, "internal lexer error: block comment depth underflow")
+            }
+        }
+    }
+}
+
+/// A lexical error, carrying both the reason ([`LexErrorKind`]) and the
+/// [`Position`] in the source where it was detected.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LexError {
+    pub kind: LexErrorKind,
+    pub pos: Position,
+}
+
+impl fmt::Display for LexError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.pos, self.kind)
+    }
+}
+
+impl std::error::Error for LexError {}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Lexeme {
@@ -49,7 +132,7 @@ struct State {
     token: String,
 }
 
-pub fn get_lexemes(input: &str) -> Result<Vec<Lexeme>, String> {
+pub fn get_lexemes(input: &str) -> Result<Vec<Lexeme>, LexError> {
     let mut state = State {
         kind: LexerState::Start,
         token: String::new(),
@@ -57,9 +140,12 @@ pub fn get_lexemes(input: &str) -> Result<Vec<Lexeme>, String> {
     let mut lexemes: Vec<Lexeme> = Vec::new();
     let mut chars = input.chars().peekable();
     let mut block_depth: u32 = 0;
+    let mut cursor = Cursor::new();
 
     while let Some(c) = take(&mut chars) {
-        let (new_state, emit, reprocess) = transition(&mut state, c, &mut chars, &mut block_depth)?;
+        let pos = cursor.pos();
+        let (new_state, emit, reprocess) =
+            transition(&mut state, c, &mut chars, &mut block_depth, pos)?;
 
         state.kind = new_state;
 
@@ -96,14 +182,48 @@ pub fn get_lexemes(input: &str) -> Result<Vec<Lexeme>, String> {
                 }
                 ';' => state.kind = LexerState::LineComment,
                 _ => {
-                    return Err(format!("unexpected character '{}'", c));
+                    return Err(LexError {
+                        kind: LexErrorKind::UnexpectedChar(c),
+                        pos,
+                    });
                 }
             }
         }
+
+        cursor.advance(c);
     }
 
-    finish(state, &mut lexemes)?;
+    finish(state, &mut lexemes, cursor.pos())?;
     Ok(lexemes)
+}
+
+/// Tracks the current line/column while scanning the input, so that errors
+/// can point at a precise location in the source.
+struct Cursor {
+    line: usize,
+    column: usize,
+}
+
+impl Cursor {
+    fn new() -> Self {
+        Cursor { line: 1, column: 1 }
+    }
+
+    fn pos(&self) -> Position {
+        Position {
+            line: self.line,
+            column: self.column,
+        }
+    }
+
+    fn advance(&mut self, c: char) {
+        if c == '\n' {
+            self.line += 1;
+            self.column = 1;
+        } else {
+            self.column += 1;
+        }
+    }
 }
 
 fn take(chars: &mut Peekable<Chars<'_>>) -> Option<char> {
@@ -139,8 +259,11 @@ fn transition(
     c: char,
     _chars: &mut Peekable<Chars<'_>>,
     block_depth: &mut u32,
-) -> Result<(LexerState, Option<Lexeme>, bool), String> {
+    pos: Position,
+) -> Result<(LexerState, Option<Lexeme>, bool), LexError> {
     use LexerState::*;
+
+    let err = |kind: LexErrorKind| Err(LexError { kind, pos });
 
     match state.kind {
         Start => match c {
@@ -166,7 +289,7 @@ fn transition(
                 state.token.push(c);
                 Ok((Sign, None, false))
             }
-            _ => Err(format!("unexpected character '{}'", c)),
+            _ => err(LexErrorKind::UnexpectedChar(c)),
         },
 
         LineComment => Ok((if c == '\n' { Start } else { LineComment }, None, false)),
@@ -180,7 +303,7 @@ fn transition(
             'f' | 'F' => Ok((Start, Some(Lexeme::Boolean(false)), false)),
             '(' => Ok((Start, Some(Lexeme::VectorOpen), false)),
             '\\' => Ok((CharSharp, None, false)),
-            _ => Err(format!("unexpected sharp dispatch '{}'", c)),
+            _ => err(LexErrorKind::UnexpectedSharpDispatch(c)),
         },
 
         BlockComment => match c {
@@ -191,7 +314,10 @@ fn transition(
 
         BlockCommentBar => match c {
             '#' => {
-                *block_depth -= 1;
+                *block_depth = block_depth.checked_sub(1).ok_or(LexError {
+                    kind: LexErrorKind::BlockCommentDepthUnderflow,
+                    pos,
+                })?;
                 if *block_depth == 0 {
                     Ok((Start, None, false))
                 } else {
@@ -230,11 +356,11 @@ fn transition(
                 Ok((CharName, None, false))
             }
             c if c.is_whitespace() || is_delimiter(c) => {
-                let ch = resolve_char_name(&state.token)?;
+                let ch = resolve_char_name(&state.token, pos)?;
                 Ok((Start, Some(Lexeme::Character(ch)), true))
             }
             _ => {
-                let ch = resolve_char_name(&state.token)?;
+                let ch = resolve_char_name(&state.token, pos)?;
                 Ok((Start, Some(Lexeme::Character(ch)), true))
             }
         },
@@ -287,7 +413,7 @@ fn transition(
                 state.token = "...".to_string();
                 Ok((Start, Some(Lexeme::Id(state.token.clone())), false))
             }
-            _ => Err(format!("invalid token '..{}'", c)),
+            _ => err(LexErrorKind::InvalidDotDotSequence(c)),
         },
 
         Integer => match c {
@@ -312,17 +438,11 @@ fn transition(
                 Ok((Id, None, false))
             }
             c if c.is_whitespace() || is_delimiter(c) => {
-                let value = state
-                    .token
-                    .parse()
-                    .map_err(|e| format!("bad integer: {}", e))?;
+                let value = parse_integer(&state.token, pos)?;
                 Ok((Start, Some(Lexeme::Integer(value)), true))
             }
             _ => {
-                let value = state
-                    .token
-                    .parse()
-                    .map_err(|e| format!("bad integer: {}", e))?;
+                let value = parse_integer(&state.token, pos)?;
                 Ok((Start, Some(Lexeme::Integer(value)), true))
             }
         },
@@ -337,11 +457,11 @@ fn transition(
                 Ok((Exponent, None, false))
             }
             c if c.is_whitespace() || is_delimiter(c) => {
-                let value = parse_float(&state.token)?;
+                let value = parse_float(&state.token, pos)?;
                 Ok((Start, Some(Lexeme::Float(value)), true))
             }
             _ => {
-                let value = parse_float(&state.token)?;
+                let value = parse_float(&state.token, pos)?;
                 Ok((Start, Some(Lexeme::Float(value)), true))
             }
         },
@@ -355,7 +475,7 @@ fn transition(
                 state.token.push(c);
                 Ok((ExponentSign, None, false))
             }
-            _ => Err(format!("expected exponent digits, got '{}'", c)),
+            _ => err(LexErrorKind::ExpectedExponentDigit(c)),
         },
 
         ExponentSign => match c {
@@ -363,7 +483,7 @@ fn transition(
                 state.token.push(c);
                 Ok((ExponentDigits, None, false))
             }
-            _ => Err(format!("expected exponent digits after sign, got '{}'", c)),
+            _ => err(LexErrorKind::ExpectedExponentDigit(c)),
         },
 
         ExponentDigits => match c {
@@ -372,11 +492,11 @@ fn transition(
                 Ok((ExponentDigits, None, false))
             }
             c if c.is_whitespace() || is_delimiter(c) => {
-                let value = parse_float(&state.token)?;
+                let value = parse_float(&state.token, pos)?;
                 Ok((Start, Some(Lexeme::Float(value)), true))
             }
             _ => {
-                let value = parse_float(&state.token)?;
+                let value = parse_float(&state.token, pos)?;
                 Ok((Start, Some(Lexeme::Float(value)), true))
             }
         },
@@ -414,26 +534,25 @@ fn transition(
                 state.token.push('\r');
                 Ok((InString, None, false))
             }
-            _ => Err(format!("unknown escape sequence '\\{}'", c)),
+            _ => err(LexErrorKind::UnknownEscape(c)),
         },
     }
 }
 
-fn finish(state: State, lexemes: &mut Vec<Lexeme>) -> Result<(), String> {
+fn finish(state: State, lexemes: &mut Vec<Lexeme>, pos: Position) -> Result<(), LexError> {
     use LexerState::*;
+
+    let err = |kind: LexErrorKind| Err(LexError { kind, pos });
 
     match state.kind {
         Start | LineComment => Ok(()),
         Integer => {
-            let value = state
-                .token
-                .parse()
-                .map_err(|e| format!("bad integer: {}", e))?;
+            let value = parse_integer(&state.token, pos)?;
             lexemes.push(Lexeme::Integer(value));
             Ok(())
         }
         Float | ExponentDigits => {
-            let value = parse_float(&state.token)?;
+            let value = parse_float(&state.token, pos)?;
             lexemes.push(Lexeme::Float(value));
             Ok(())
         }
@@ -446,36 +565,47 @@ fn finish(state: State, lexemes: &mut Vec<Lexeme>) -> Result<(), String> {
             Ok(())
         }
         CharName => {
-            let ch = resolve_char_name(&state.token)?;
+            let ch = resolve_char_name(&state.token, pos)?;
             lexemes.push(Lexeme::Character(ch));
             Ok(())
         }
-        CharSharp => Err(format!("unterminated token: {:?}", state)),
+        CharSharp => err(LexErrorKind::UnterminatedCharacter),
         Unquote => {
             lexemes.push(Lexeme::Unquote);
             Ok(())
         }
-        Sharp => Err("unterminated sharp dispatch".to_string()),
+        Sharp => err(LexErrorKind::UnterminatedSharpDispatch),
         BlockComment | BlockCommentBar | BlockCommentHash => {
-            Err("unterminated block comment".to_string())
+            err(LexErrorKind::UnterminatedBlockComment)
         }
-        InString | Escape => Err("unterminated string".to_string()),
-        Exponent | ExponentSign => Err("unterminated exponent".to_string()),
+        InString | Escape => err(LexErrorKind::UnterminatedString),
+        Exponent | ExponentSign => err(LexErrorKind::UnterminatedExponent),
     }
 }
 
-fn parse_float(token: &str) -> Result<f64, String> {
-    token
-        .parse()
-        .map_err(|e| format!("bad float '{}': {}", token, e))
+fn parse_integer(token: &str, pos: Position) -> Result<i64, LexError> {
+    token.parse().map_err(|_| LexError {
+        kind: LexErrorKind::InvalidInteger(token.to_string()),
+        pos,
+    })
 }
 
-fn resolve_char_name(name: &str) -> Result<char, String> {
+fn parse_float(token: &str, pos: Position) -> Result<f64, LexError> {
+    token.parse().map_err(|_| LexError {
+        kind: LexErrorKind::InvalidFloat(token.to_string()),
+        pos,
+    })
+}
+
+fn resolve_char_name(name: &str, pos: Position) -> Result<char, LexError> {
     match name {
         "space" => Ok(' '),
         "newline" => Ok('\n'),
         _ if name.len() == 1 => Ok(name.chars().next().unwrap()),
-        _ => Err(format!("unknown character name '#\\{}'", name)),
+        _ => Err(LexError {
+            kind: LexErrorKind::UnknownCharName(name.to_string()),
+            pos,
+        }),
     }
 }
 
@@ -607,11 +737,65 @@ mod tests {
 
     #[test]
     fn unknown_char_name_errors() {
-        assert!(get_lexemes("#\\foobar").is_err());
+        let err = get_lexemes("#\\foobar").unwrap_err();
+        assert_eq!(
+            err.kind,
+            LexErrorKind::UnknownCharName("foobar".to_string())
+        );
+        assert_eq!(err.pos, Position { line: 1, column: 9 });
     }
 
     #[test]
     fn unterminated_string_errors() {
-        assert!(get_lexemes("\"hello").is_err());
+        let err = get_lexemes("\"hello").unwrap_err();
+        assert_eq!(err.kind, LexErrorKind::UnterminatedString);
+        assert_eq!(err.pos, Position { line: 1, column: 7 });
+    }
+
+    #[test]
+    fn error_reports_line_and_column_across_newlines() {
+        let err = get_lexemes("(+ 1 2)\n(foo #\\bogusname)").unwrap_err();
+        assert_eq!(
+            err.kind,
+            LexErrorKind::UnknownCharName("bogusname".to_string())
+        );
+        assert_eq!(
+            err.pos,
+            Position {
+                line: 2,
+                column: 17
+            }
+        );
+    }
+
+    #[test]
+    fn unexpected_character_error() {
+        let err = get_lexemes("(foo | bar)").unwrap_err();
+        assert_eq!(err.kind, LexErrorKind::UnexpectedChar('|'));
+        assert_eq!(err.pos, Position { line: 1, column: 6 });
+    }
+
+    #[test]
+    fn unterminated_block_comment_errors() {
+        let err = get_lexemes("#| nested #| comment |# ").unwrap_err();
+        assert_eq!(err.kind, LexErrorKind::UnterminatedBlockComment);
+    }
+
+    #[test]
+    fn invalid_dot_dot_sequence_errors() {
+        let err = get_lexemes("..x").unwrap_err();
+        assert_eq!(err.kind, LexErrorKind::InvalidDotDotSequence('x'));
+    }
+
+    #[test]
+    fn unknown_escape_errors() {
+        let err = get_lexemes("\"bad \\q escape\"").unwrap_err();
+        assert_eq!(err.kind, LexErrorKind::UnknownEscape('q'));
+    }
+
+    #[test]
+    fn lex_error_display_includes_position() {
+        let err = get_lexemes("(foo | bar)").unwrap_err();
+        assert_eq!(err.to_string(), "1:6: unexpected character '|'");
     }
 }
