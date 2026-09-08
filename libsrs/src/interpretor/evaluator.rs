@@ -140,6 +140,7 @@ fn eval_combination(expr: &SrsValue, env: &Rc<Env>) -> Result<SrsValue, EvalErro
             "define" => return eval_define(&items[1..], env),
             "lambda" => return eval_lambda(&items[1..], env),
             "let" => return eval_let(&items[1..], env),
+            "if" => return eval_if(&items[1..], env),
             _ => {}
         }
     }
@@ -220,6 +221,36 @@ fn eval_let(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
             Ok(result)
         }
     }
+}
+
+/// Handles `(if <test> <conseq> [<alt>])`. Per R5RS, any value other than
+/// `#f` counts as true. Evaluates and returns `<conseq>` when `<test>` is
+/// true, otherwise evaluates and returns `<alt>` if present, or
+/// [`SrsValue::Unspecified`] when it is absent.
+fn eval_if(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
+    match args {
+        [test, conseq] => {
+            if is_truthy(&eval(test, env)?) {
+                eval(conseq, env)
+            } else {
+                Ok(SrsValue::Unspecified)
+            }
+        }
+        [test, conseq, alt] => {
+            if is_truthy(&eval(test, env)?) {
+                eval(conseq, env)
+            } else {
+                eval(alt, env)
+            }
+        }
+        [] | [_] => err(EvalErrorKind::NotEnoughArguments),
+        _ => err(EvalErrorKind::TooManyArguments),
+    }
+}
+
+/// R5RS truthiness: every value is true except `#f`.
+fn is_truthy(value: &SrsValue) -> bool {
+    !matches!(value, SrsValue::Boolean(false))
 }
 
 /// Parses a lambda parameter spec into a fixed parameter list and an
@@ -739,5 +770,46 @@ mod tests {
     #[test]
     fn lambda_non_symbol_param_fails() {
         assert!(eval_src("(lambda (1) 1)").is_err());
+    }
+
+    #[test]
+    fn if_true_branch() {
+        assert!(matches!(ok("(if #t 1 2)"), SrsValue::Integer(1)));
+    }
+
+    #[test]
+    fn if_false_branch() {
+        assert!(matches!(ok("(if #f 1 2)"), SrsValue::Integer(2)));
+    }
+
+    #[test]
+    fn if_without_alt_when_true() {
+        assert!(matches!(ok("(if #t 42)"), SrsValue::Integer(42)));
+    }
+
+    #[test]
+    fn if_without_alt_when_false_is_unspecified() {
+        assert!(matches!(ok("(if #f 42)"), SrsValue::Unspecified));
+    }
+
+    #[test]
+    fn if_treats_non_boolean_as_true() {
+        assert!(matches!(ok("(if 0 1 2)"), SrsValue::Integer(1)));
+    }
+
+    #[test]
+    fn if_only_evaluates_taken_branch() {
+        assert!(matches!(ok("(if #t 1 (/ 1 0))"), SrsValue::Integer(1)));
+        assert!(matches!(ok("(if #f (/ 1 0) 2)"), SrsValue::Integer(2)));
+    }
+
+    #[test]
+    fn if_too_few_args_fails() {
+        assert!(eval_src("(if #t)").is_err());
+    }
+
+    #[test]
+    fn if_too_many_args_fails() {
+        assert!(eval_src("(if #t 1 2 3)").is_err());
     }
 }
