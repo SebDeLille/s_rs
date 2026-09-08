@@ -111,6 +111,7 @@ fn eval_combination(expr: &SrsValue, env: &Rc<Env>) -> Result<SrsValue, EvalErro
         match op.as_str() {
             "define" => return eval_define(&items[1..], env),
             "lambda" => return eval_lambda(&items[1..], env),
+            "let" => return eval_let(&items[1..], env),
             _ => {}
         }
     }
@@ -155,6 +156,40 @@ fn eval_lambda(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> 
                 body: body.to_vec(),
                 env: env.clone(),
             })))
+        }
+    }
+}
+
+/// Handles `(let ((<name> <init>)...) <body>...)`, evaluating each `<init>`
+/// in the enclosing environment, binding the results in a fresh child
+/// environment, and evaluating the body in sequence (implicit `begin`).
+fn eval_let(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
+    match args {
+        [] => err(EvalErrorKind::NotEnoughArguments),
+        [_] => err(EvalErrorKind::NotEnoughArguments),
+        [bindings_spec, body @ ..] => {
+            let bindings = list_to_vec(bindings_spec)?;
+            let let_env = Env::new(Some(env.clone()));
+            for binding in &bindings {
+                let parts = list_to_vec(binding)?;
+                match parts.as_slice() {
+                    [name, init_expr] => {
+                        let name = match name {
+                            SrsValue::Symbol(s) => s.clone(),
+                            _ => return err(EvalErrorKind::WrongType),
+                        };
+                        let value = eval(init_expr, env)?;
+                        let_env.define(name, value);
+                    }
+                    _ => return err(EvalErrorKind::WrongType),
+                }
+            }
+
+            let mut result = SrsValue::Unspecified;
+            for expr in body {
+                result = eval(expr, &let_env)?;
+            }
+            Ok(result)
         }
     }
 }

@@ -10,3 +10,7 @@ edition = "2024"
 [[test]]
 name = "r5rs_numerical"
 path = "tests/r5rs/numerical_tests.rs"
+
+[[test]]
+name = "r5rs_procedure"
+path = "tests/r5rs/procedure_tests.rs"
