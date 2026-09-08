@@ -47,7 +47,7 @@ fn eval_line(line: &str, env: &Rc<Env>) -> Result<(), String> {
     for value in &values {
         match eval(value, env) {
             Ok(SrsValue::Unspecified) => {}
-            Ok(result) => println!("{:?}", result),
+            Ok(result) => println!("{}", result),
             Err(e) => return Err(e.to_string()),
         }
     }

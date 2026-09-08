@@ -103,6 +103,72 @@ pub enum SrsValue {
     Promise(Rc<RefCell<PromiseState>>),
 }
 
+impl fmt::Display for SrsValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SrsValue::Integer(n) => write!(f, "{}", n),
+            SrsValue::Float(x) => write!(f, "{}", x),
+            SrsValue::Rational(num, den) => write!(f, "{}/{}", num, den),
+            SrsValue::Boolean(true) => write!(f, "#t"),
+            SrsValue::Boolean(false) => write!(f, "#f"),
+            SrsValue::Character(c) => write!(f, "#\\{}", format_char(*c)),
+            SrsValue::String(s) => write!(f, "\"{}\"", s.borrow()),
+            SrsValue::Symbol(s) => write!(f, "{}", s),
+            SrsValue::Nil => write!(f, "()"),
+            SrsValue::Pair(_) => {
+                write!(f, "(")?;
+                let mut first = true;
+                let mut cur = self.clone();
+                loop {
+                    match cur {
+                        SrsValue::Pair(p) => {
+                            let (car, cdr) = p.borrow().clone();
+                            if !first {
+                                write!(f, " ")?;
+                            }
+                            first = false;
+                            write!(f, "{}", car)?;
+                            cur = cdr;
+                        }
+                        SrsValue::Nil => break,
+                        other => {
+                            write!(f, " . {}", other)?;
+                            break;
+                        }
+                    }
+                }
+                write!(f, ")")
+            }
+            SrsValue::Vector(v) => {
+                write!(f, "#(")?;
+                for (i, item) in v.borrow().iter().enumerate() {
+                    if i > 0 {
+                        write!(f, " ")?;
+                    }
+                    write!(f, "{}", item)?;
+                }
+                write!(f, ")")
+            }
+            SrsValue::Unspecified => Ok(()),
+            SrsValue::Eof => write!(f, "#<eof>"),
+            SrsValue::Procedure(_) => write!(f, "#<procedure>"),
+            SrsValue::Native(n) => write!(f, "#<procedure:{}>", n.name),
+            SrsValue::Promise(_) => write!(f, "#<promise>"),
+        }
+    }
+}
+
+fn format_char(c: char) -> String {
+    match c {
+        ' ' => "space".to_string(),
+        '\n' => "newline".to_string(),
+        '\t' => "tab".to_string(),
+        '\r' => "return".to_string(),
+        '\0' => "null".to_string(),
+        c => c.to_string(),
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum PromiseState {
     Forced(SrsValue),
