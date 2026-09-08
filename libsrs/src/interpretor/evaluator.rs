@@ -83,6 +83,34 @@ pub fn global_env() -> Rc<Env> {
             func: native_div,
         }),
     );
+    env.define(
+        "sin".to_string(),
+        SrsValue::Native(Native {
+            name: "sin",
+            func: native_sin,
+        }),
+    );
+    env.define(
+        "cos".to_string(),
+        SrsValue::Native(Native {
+            name: "cos",
+            func: native_cos,
+        }),
+    );
+    env.define(
+        "tan".to_string(),
+        SrsValue::Native(Native {
+            name: "tan",
+            func: native_tan,
+        }),
+    );
+    env.define(
+        "atan".to_string(),
+        SrsValue::Native(Native {
+            name: "atan",
+            func: native_atan,
+        }),
+    );
     env
 }
 
@@ -329,6 +357,49 @@ fn native_div(args: &[SrsValue]) -> Result<SrsValue, String> {
     }
 }
 
+/// Converts a numeric [`SrsValue`] to `f64`, as needed by the transcendental
+/// functions (`sin`, `cos`, `tan`, `atan`), which always return an inexact
+/// (`Float`) result per R5RS section 6.2.6.
+fn numeric_to_f64(value: &SrsValue) -> Result<f64, String> {
+    match value {
+        SrsValue::Integer(n) => Ok(*n as f64),
+        SrsValue::Float(f) => Ok(*f),
+        _ => Err("wrong type: expected number".to_string()),
+    }
+}
+
+fn native_sin(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [] => Err("not enough arguments to sin".to_string()),
+        [only] => numeric_to_f64(only).map(|n| SrsValue::Float(n.sin())),
+        _ => Err("too many arguments to sin".to_string()),
+    }
+}
+
+fn native_cos(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [] => Err("not enough arguments to cos".to_string()),
+        [only] => numeric_to_f64(only).map(|n| SrsValue::Float(n.cos())),
+        _ => Err("too many arguments to cos".to_string()),
+    }
+}
+
+fn native_tan(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [] => Err("not enough arguments to tan".to_string()),
+        [only] => numeric_to_f64(only).map(|n| SrsValue::Float(n.tan())),
+        _ => Err("too many arguments to tan".to_string()),
+    }
+}
+
+fn native_atan(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [] => Err("not enough arguments to atan".to_string()),
+        [only] => numeric_to_f64(only).map(|n| SrsValue::Float(n.atan())),
+        _ => Err("too many arguments to atan".to_string()),
+    }
+}
+
 fn negate(value: &SrsValue) -> Result<SrsValue, String> {
     match value {
         SrsValue::Integer(n) => Ok(SrsValue::Integer(-n)),
@@ -460,6 +531,69 @@ mod tests {
             SrsValue::Float(f) => assert!((f - 3.5).abs() < f64::EPSILON),
             other => panic!("expected float, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn sin_of_zero() {
+        match ok("(sin 0)") {
+            SrsValue::Float(f) => assert!((f - 0.0).abs() < f64::EPSILON),
+            other => panic!("expected float, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn cos_of_zero() {
+        match ok("(cos 0)") {
+            SrsValue::Float(f) => assert!((f - 1.0).abs() < f64::EPSILON),
+            other => panic!("expected float, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn tan_of_zero() {
+        match ok("(tan 0)") {
+            SrsValue::Float(f) => assert!((f - 0.0).abs() < f64::EPSILON),
+            other => panic!("expected float, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn atan_of_zero() {
+        match ok("(atan 0)") {
+            SrsValue::Float(f) => assert!((f - 0.0).abs() < f64::EPSILON),
+            other => panic!("expected float, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn sin_of_one_matches_std_computation() {
+        match ok("(sin 1)") {
+            SrsValue::Float(f) => assert!((f - 1f64.sin()).abs() < 1e-9),
+            other => panic!("expected float, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn trig_accepts_float_argument() {
+        match ok("(cos 0.0)") {
+            SrsValue::Float(f) => assert!((f - 1.0).abs() < f64::EPSILON),
+            other => panic!("expected float, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn sin_no_args_fails() {
+        assert!(eval_src("(sin)").is_err());
+    }
+
+    #[test]
+    fn sin_too_many_args_fails() {
+        assert!(eval_src("(sin 1 2)").is_err());
+    }
+
+    #[test]
+    fn sin_wrong_type_fails() {
+        assert!(eval_src("(sin \"a\")").is_err());
     }
 
     #[test]
