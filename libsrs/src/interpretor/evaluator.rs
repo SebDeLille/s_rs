@@ -84,6 +84,48 @@ pub fn global_env() -> Rc<Env> {
         }),
     );
     env.define(
+        "=".to_string(),
+        SrsValue::Native(Native {
+            name: "=",
+            func: native_num_eq,
+        }),
+    );
+    env.define(
+        "<".to_string(),
+        SrsValue::Native(Native {
+            name: "<",
+            func: native_lt,
+        }),
+    );
+    env.define(
+        ">".to_string(),
+        SrsValue::Native(Native {
+            name: ">",
+            func: native_gt,
+        }),
+    );
+    env.define(
+        "<=".to_string(),
+        SrsValue::Native(Native {
+            name: "<=",
+            func: native_le,
+        }),
+    );
+    env.define(
+        ">=".to_string(),
+        SrsValue::Native(Native {
+            name: ">=",
+            func: native_ge,
+        }),
+    );
+    env.define(
+        "not".to_string(),
+        SrsValue::Native(Native {
+            name: "not",
+            func: native_not,
+        }),
+    );
+    env.define(
         "sin".to_string(),
         SrsValue::Native(Native {
             name: "sin",
@@ -395,7 +437,73 @@ fn numeric_to_f64(value: &SrsValue) -> Result<f64, String> {
     match value {
         SrsValue::Integer(n) => Ok(*n as f64),
         SrsValue::Float(f) => Ok(*f),
+        SrsValue::Rational(n, d) => Ok(*n as f64 / *d as f64),
         _ => Err("wrong type: expected number".to_string()),
+    }
+}
+
+/// Compares two numeric [`SrsValue`]s, keeping exact `i64` comparison for
+/// two integers and falling back to `f64` comparison for any mix involving
+/// `Float` or `Rational`.
+fn numeric_cmp(a: &SrsValue, b: &SrsValue) -> Result<std::cmp::Ordering, String> {
+    match (a, b) {
+        (SrsValue::Integer(x), SrsValue::Integer(y)) => Ok(x.cmp(y)),
+        _ => {
+            let fa = numeric_to_f64(a)?;
+            let fb = numeric_to_f64(b)?;
+            fa.partial_cmp(&fb)
+                .ok_or_else(|| "wrong type: expected number".to_string())
+        }
+    }
+}
+
+/// Shared implementation for `=`, `<`, `>`, `<=`, `>=`: checks that `ok`
+/// holds for every consecutive pair of `args`. A single argument is
+/// trivially true; zero arguments is an error.
+fn compare_chain(
+    name: &str,
+    args: &[SrsValue],
+    ok: fn(std::cmp::Ordering) -> bool,
+) -> Result<SrsValue, String> {
+    if args.is_empty() {
+        return Err(format!("not enough arguments to {}", name));
+    }
+    for pair in args.windows(2) {
+        let ord = numeric_cmp(&pair[0], &pair[1])?;
+        if !ok(ord) {
+            return Ok(SrsValue::Boolean(false));
+        }
+    }
+    Ok(SrsValue::Boolean(true))
+}
+
+fn native_num_eq(args: &[SrsValue]) -> Result<SrsValue, String> {
+    compare_chain("=", args, |ord| ord == std::cmp::Ordering::Equal)
+}
+
+fn native_lt(args: &[SrsValue]) -> Result<SrsValue, String> {
+    compare_chain("<", args, |ord| ord == std::cmp::Ordering::Less)
+}
+
+fn native_gt(args: &[SrsValue]) -> Result<SrsValue, String> {
+    compare_chain(">", args, |ord| ord == std::cmp::Ordering::Greater)
+}
+
+fn native_le(args: &[SrsValue]) -> Result<SrsValue, String> {
+    compare_chain("<=", args, |ord| ord != std::cmp::Ordering::Greater)
+}
+
+fn native_ge(args: &[SrsValue]) -> Result<SrsValue, String> {
+    compare_chain(">=", args, |ord| ord != std::cmp::Ordering::Less)
+}
+
+/// `(not obj)`: `#t` if `obj` is `#f`, `#f` for any other value (per R5RS,
+/// every value counts as true except `#f`).
+fn native_not(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [only] => Ok(SrsValue::Boolean(matches!(only, SrsValue::Boolean(false)))),
+        [] => Err("not enough arguments to not".to_string()),
+        _ => Err("too many arguments to not".to_string()),
     }
 }
 
@@ -625,6 +733,104 @@ mod tests {
     #[test]
     fn sin_wrong_type_fails() {
         assert!(eval_src("(sin \"a\")").is_err());
+    }
+
+    #[test]
+    fn num_eq_true() {
+        assert!(matches!(ok("(= 1 1 1)"), SrsValue::Boolean(true)));
+    }
+
+    #[test]
+    fn num_eq_false() {
+        assert!(matches!(ok("(= 1 1 2)"), SrsValue::Boolean(false)));
+    }
+
+    #[test]
+    fn num_eq_int_float_mix() {
+        assert!(matches!(ok("(= 1 1.0)"), SrsValue::Boolean(true)));
+    }
+
+    #[test]
+    fn lt_increasing() {
+        assert!(matches!(ok("(< 1 2 3)"), SrsValue::Boolean(true)));
+    }
+
+    #[test]
+    fn lt_not_increasing() {
+        assert!(matches!(ok("(< 1 3 2)"), SrsValue::Boolean(false)));
+    }
+
+    #[test]
+    fn gt_decreasing() {
+        assert!(matches!(ok("(> 3 2 1)"), SrsValue::Boolean(true)));
+    }
+
+    #[test]
+    fn gt_not_decreasing() {
+        assert!(matches!(ok("(> 3 1 2)"), SrsValue::Boolean(false)));
+    }
+
+    #[test]
+    fn le_allows_equal() {
+        assert!(matches!(ok("(<= 1 1 2)"), SrsValue::Boolean(true)));
+    }
+
+    #[test]
+    fn le_rejects_decrease() {
+        assert!(matches!(ok("(<= 1 2 1)"), SrsValue::Boolean(false)));
+    }
+
+    #[test]
+    fn ge_allows_equal() {
+        assert!(matches!(ok("(>= 2 2 1)"), SrsValue::Boolean(true)));
+    }
+
+    #[test]
+    fn ge_rejects_increase() {
+        assert!(matches!(ok("(>= 2 1 2)"), SrsValue::Boolean(false)));
+    }
+
+    #[test]
+    fn compare_single_arg_is_true() {
+        assert!(matches!(ok("(< 1)"), SrsValue::Boolean(true)));
+        assert!(matches!(ok("(= 1)"), SrsValue::Boolean(true)));
+    }
+
+    #[test]
+    fn compare_no_args_fails() {
+        assert!(eval_src("(=)").is_err());
+        assert!(eval_src("(<)").is_err());
+    }
+
+    #[test]
+    fn compare_wrong_type_fails() {
+        assert!(eval_src("(< 1 \"a\")").is_err());
+    }
+
+    #[test]
+    fn not_false_is_true() {
+        assert!(matches!(ok("(not #f)"), SrsValue::Boolean(true)));
+    }
+
+    #[test]
+    fn not_true_is_false() {
+        assert!(matches!(ok("(not #t)"), SrsValue::Boolean(false)));
+    }
+
+    #[test]
+    fn not_non_boolean_is_false() {
+        assert!(matches!(ok("(not 0)"), SrsValue::Boolean(false)));
+        assert!(matches!(ok("(not \"a\")"), SrsValue::Boolean(false)));
+    }
+
+    #[test]
+    fn not_no_args_fails() {
+        assert!(eval_src("(not)").is_err());
+    }
+
+    #[test]
+    fn not_too_many_args_fails() {
+        assert!(eval_src("(not #t #f)").is_err());
     }
 
     #[test]
