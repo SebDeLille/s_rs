@@ -1,5 +1,6 @@
-use libsrs::hello;
+use libsrs::interpretor::lexical_analyzer::get_lexemes;
 
 fn main() {
-    hello();
+    let lexemes = get_lexemes("(+ 1 2)").unwrap();
+    println!("{:?}", lexemes);
 }
