@@ -82,6 +82,34 @@ pub(super) fn install(env: &Rc<Env>) {
             func: Rc::new(native_not),
         }),
     );
+    env.define(
+        "exact->inexact".to_string(),
+        SrsValue::Native(Native {
+            name: "exact->inexact",
+            func: Rc::new(native_exact_to_inexact),
+        }),
+    );
+    env.define(
+        "inexact->exact".to_string(),
+        SrsValue::Native(Native {
+            name: "inexact->exact",
+            func: Rc::new(native_inexact_to_exact),
+        }),
+    );
+    env.define(
+        "exact?".to_string(),
+        SrsValue::Native(Native {
+            name: "exact?",
+            func: Rc::new(native_is_exact),
+        }),
+    );
+    env.define(
+        "inexact?".to_string(),
+        SrsValue::Native(Native {
+            name: "inexact?",
+            func: Rc::new(native_is_inexact),
+        }),
+    );
 }
 
 fn native_add(args: &[SrsValue]) -> Result<SrsValue, String> {
@@ -173,4 +201,82 @@ fn native_not(args: &[SrsValue]) -> Result<SrsValue, String> {
         [] => Err("not enough arguments to not".to_string()),
         _ => Err("too many arguments to not".to_string()),
     }
+}
+
+/// `(exact->inexact z)`: coerces an exact number (`Integer` or `Rational`)
+/// to its `Float` equivalent. A `Float` argument is returned unchanged.
+fn native_exact_to_inexact(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [only] => Ok(SrsValue::Float(numeric_to_f64(only)?)),
+        [] => Err("not enough arguments to exact->inexact".to_string()),
+        _ => Err("too many arguments to exact->inexact".to_string()),
+    }
+}
+
+/// `(inexact->exact z)`: coerces a `Float` to an exact `Integer` or
+/// `Rational` representing the same value. Exact arguments (`Integer`,
+/// `Rational`) are returned unchanged.
+fn native_inexact_to_exact(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [SrsValue::Integer(_) | SrsValue::Rational(_, _)] => Ok(args[0].clone()),
+        [SrsValue::Float(f)] => Ok(float_to_exact(*f)),
+        [_] => Err("wrong type: expected number to inexact->exact".to_string()),
+        [] => Err("not enough arguments to inexact->exact".to_string()),
+        _ => Err("too many arguments to inexact->exact".to_string()),
+    }
+}
+
+/// `(exact? z)`: `#t` if `z` is an `Integer` or `Rational`.
+fn native_is_exact(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [value] => Ok(SrsValue::Boolean(matches!(
+            value,
+            SrsValue::Integer(_) | SrsValue::Rational(_, _)
+        ))),
+        [] => Err("not enough arguments to exact?".to_string()),
+        _ => Err("too many arguments to exact?".to_string()),
+    }
+}
+
+/// `(inexact? z)`: `#t` if `z` is a `Float`.
+fn native_is_inexact(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [value] => Ok(SrsValue::Boolean(matches!(value, SrsValue::Float(_)))),
+        [] => Err("not enough arguments to inexact?".to_string()),
+        _ => Err("too many arguments to inexact?".to_string()),
+    }
+}
+
+/// Converts a `Float` to an exact `Integer` or `Rational` representing
+/// the same value, by repeatedly doubling until the value is integral
+/// (bounded to avoid overflow), then reducing to lowest terms.
+fn float_to_exact(f: f64) -> SrsValue {
+    if !f.is_finite() {
+        return SrsValue::Integer(0);
+    }
+    if f.fract() == 0.0 && f.abs() < 1.0e18 {
+        return SrsValue::Integer(f as i64);
+    }
+    let mut num = f;
+    let mut den: i64 = 1;
+    while num.fract() != 0.0 && den < (1i64 << 52) {
+        num *= 2.0;
+        den *= 2;
+    }
+    let mut n = num as i64;
+    let mut d = den;
+    let g = gcd(n.abs(), d);
+    if g > 1 {
+        n /= g;
+        d /= g;
+    }
+    if d == 1 {
+        SrsValue::Integer(n)
+    } else {
+        SrsValue::Rational(n, d)
+    }
+}
+
+fn gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { gcd(b, a % b) }
 }
