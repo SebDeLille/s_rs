@@ -39,3 +39,22 @@ fn define_bound_pair_accessors() {
     let src = "(define p (cons 10 20)) (+ (car p) (cdr p))";
     assert!(matches!(eval_src(src), SrsValue::Integer(30)));
 }
+
+#[test]
+fn length_returns_zero_for_the_empty_list() {
+    assert!(matches!(eval_src("(length '())"), SrsValue::Integer(0)));
+}
+
+#[test]
+fn length_returns_the_element_count() {
+    assert!(matches!(
+        eval_src("(length '(1 2 3))"),
+        SrsValue::Integer(3)
+    ));
+}
+
+#[test]
+fn length_counts_a_hand_built_list() {
+    let src = "(length (cons 1 (cons 2 (cons 3 '()))))";
+    assert!(matches!(eval_src(src), SrsValue::Integer(3)));
+}

@@ -20,6 +20,7 @@ pub(super) fn eval_combination(expr: &SrsValue, env: &Rc<Env>) -> Result<SrsValu
             "define" => return eval_define(&items[1..], env),
             "lambda" => return eval_lambda(&items[1..], env),
             "let" => return eval_let(&items[1..], env),
+            "let*" => return eval_let_star(&items[1..], env),
             "do" => return eval_do(&items[1..], env),
             "if" => return eval_if(&items[1..], env),
             "quote" => return eval_quote(&items[1..]),
@@ -101,6 +102,46 @@ fn eval_let(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
             let mut result = SrsValue::Unspecified;
             for expr in body {
                 result = eval(expr, &let_env)?;
+            }
+            Ok(result)
+        }
+    }
+}
+
+/// Handles `(let* ((<name> <init>)...) <body>...)`, evaluating each
+/// `<init>` in an environment that already includes the preceding
+/// bindings (each binding gets its own nested environment, matching
+/// R5RS semantics where later inits may refer to earlier names, and
+/// duplicate names are allowed), then evaluating the body in sequence
+/// (implicit `begin`) in the innermost environment.
+fn eval_let_star(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
+    match args {
+        [] => err(EvalErrorKind::NotEnoughArguments),
+        [_] => err(EvalErrorKind::NotEnoughArguments),
+        [bindings_spec, body @ ..] => {
+            let bindings = list_to_vec(bindings_spec)?;
+            let mut current_env = env.clone();
+            for binding in &bindings {
+                let parts = list_to_vec(binding)?;
+                match parts.as_slice() {
+                    [name, init_expr] => {
+                        let name = match name {
+                            SrsValue::Symbol(s) => s.clone(),
+                            _ => return err(EvalErrorKind::WrongType),
+                        };
+                        let value = eval(init_expr, &current_env)?;
+                        let next_env = Env::new(Some(current_env.clone()));
+                        next_env.define(name, value);
+                        current_env = next_env;
+                    }
+                    _ => return err(EvalErrorKind::WrongType),
+                }
+            }
+
+            let body_env = Env::new(Some(current_env));
+            let mut result = SrsValue::Unspecified;
+            for expr in body {
+                result = eval(expr, &body_env)?;
             }
             Ok(result)
         }

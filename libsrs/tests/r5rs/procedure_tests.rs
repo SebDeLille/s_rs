@@ -40,3 +40,15 @@ fn let_captures_enclosing_binding_in_closure() {
     let src = "(define add4 (let ((x 4)) (lambda (y) (+ x y)))) (add4 6)";
     assert!(matches!(eval_src(src), SrsValue::Integer(10)));
 }
+
+#[test]
+fn let_star_sees_earlier_bindings() {
+    let src = "(let* ((x 2) (y (* x 3))) (+ x y))";
+    assert!(matches!(eval_src(src), SrsValue::Integer(8)));
+}
+
+#[test]
+fn let_star_allows_shadowing_earlier_binding() {
+    let src = "(let* ((x 2) (x (* x 3))) x)";
+    assert!(matches!(eval_src(src), SrsValue::Integer(6)));
+}

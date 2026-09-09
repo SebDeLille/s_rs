@@ -42,6 +42,13 @@ pub(super) fn install(env: &Rc<Env>) {
             func: Rc::new(native_map),
         }),
     );
+    env.define(
+        "length".to_string(),
+        SrsValue::Native(Native {
+            name: "length",
+            func: Rc::new(native_length),
+        }),
+    );
 }
 
 /// `(cons car cdr)`: allocates a fresh mutable pair.
@@ -112,5 +119,18 @@ fn native_map(args: &[SrsValue]) -> Result<SrsValue, String> {
             }
             Ok(vec_to_list(results))
         }
+    }
+}
+
+/// `(length list)`: returns the number of elements in `list`, which must
+/// be a proper list (R5RS section 6.3.2).
+fn native_length(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [list] => {
+            let items = list_to_vec(list).map_err(|e| e.to_string())?;
+            Ok(SrsValue::Integer(items.len() as i64))
+        }
+        [] => Err("not enough arguments to length".to_string()),
+        _ => Err("too many arguments to length".to_string()),
     }
 }
