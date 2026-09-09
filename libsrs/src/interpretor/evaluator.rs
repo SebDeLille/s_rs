@@ -73,7 +73,7 @@ pub fn eval(expr: &SrsValue, env: &Rc<Env>) -> Result<SrsValue, EvalError> {
 
 /// Applies a callable [`SrsValue`] ([`SrsValue::Native`] or
 /// [`SrsValue::Procedure`]) to already-evaluated arguments.
-pub(crate) fn apply(proc: &SrsValue, args: &[SrsValue]) -> Result<SrsValue, EvalError> {
+pub fn apply(proc: &SrsValue, args: &[SrsValue]) -> Result<SrsValue, EvalError> {
     match proc {
         SrsValue::Native(native) => (native.func)(args).map_err(|msg| EvalError {
             kind: EvalErrorKind::Native(msg),
