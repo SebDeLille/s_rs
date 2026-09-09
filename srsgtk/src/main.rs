@@ -1,6 +1,9 @@
 use gtk4::prelude::*;
 use gtk4::{Application, ApplicationWindow, DrawingArea, Orientation, Paned};
 
+use libsrs::interpretor::evaluator::global_env;
+
+mod graphics;
 mod repl;
 
 const APP_ID: &str = "org.srs.srsgtk";
@@ -22,13 +25,11 @@ fn build_ui(app: &Application) {
     let drawing_area = DrawingArea::new();
     drawing_area.set_vexpand(true);
     drawing_area.set_hexpand(true);
-    drawing_area.set_draw_func(|_area, cr, width, height| {
-        cr.set_source_rgb(0.15, 0.15, 0.18);
-        cr.rectangle(0.0, 0.0, width as f64, height as f64);
-        let _ = cr.fill();
-    });
 
-    let repl_widget = repl::build_repl_widget();
+    let env = global_env();
+    graphics::install(&env, &drawing_area);
+
+    let repl_widget = repl::build_repl_widget(env);
     repl_widget.set_vexpand(true);
     repl_widget.set_hexpand(true);
 
