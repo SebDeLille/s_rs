@@ -284,6 +284,7 @@ fn eval_combination(expr: &SrsValue, env: &Rc<Env>) -> Result<SrsValue, EvalErro
             "if" => return eval_if(&items[1..], env),
             "quote" => return eval_quote(&items[1..]),
             "quasiquote" => return eval_quasiquote(&items[1..], env),
+            "load" => return eval_load(&items[1..], env),
             _ => {}
         }
     }
@@ -411,6 +412,44 @@ fn eval_quasiquote(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalErr
         [] => err(EvalErrorKind::NotEnoughArguments),
         _ => err(EvalErrorKind::TooManyArguments),
     }
+}
+
+/// Handles `(load <filename>)`: reads the Scheme source file at
+/// `<filename>` (a string, evaluated normally), reads all top-level
+/// expressions from it, and evaluates them in sequence in the current
+/// environment `env`. Returns the value of the last expression, or
+/// [`SrsValue::Unspecified`] if the file is empty.
+fn eval_load(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
+    let path_expr = match args {
+        [path_expr] => path_expr,
+        [] => return err(EvalErrorKind::NotEnoughArguments),
+        _ => return err(EvalErrorKind::TooManyArguments),
+    };
+
+    let path_value = eval(path_expr, env)?;
+    let path = match &path_value {
+        SrsValue::String(s) => s.borrow().clone(),
+        _ => return err(EvalErrorKind::WrongType),
+    };
+
+    let source = std::fs::read_to_string(&path).map_err(|e| EvalError {
+        kind: EvalErrorKind::Native(format!("load: could not read {}: {}", path, e)),
+    })?;
+
+    let lexemes = crate::interpretor::lexical_analyzer::get_lexemes(&source).map_err(|e| {
+        EvalError {
+            kind: EvalErrorKind::Native(format!("load: {}: {}", path, e)),
+        }
+    })?;
+    let exprs = crate::interpretor::reader::read_all(lexemes).map_err(|e| EvalError {
+        kind: EvalErrorKind::Native(format!("load: {}: {}", path, e)),
+    })?;
+
+    let mut result = SrsValue::Unspecified;
+    for expr in &exprs {
+        result = eval(expr, env)?;
+    }
+    Ok(result)
 }
 
 /// Recursively expands a quasiquoted template at the given nesting `depth`.
@@ -1686,5 +1725,53 @@ mod tests {
     #[test]
     fn map_one_arg_fails() {
         assert!(eval_src("(map +)").is_err());
+    }
+
+    fn write_temp_scm(contents: &str) -> String {
+        use std::io::Write;
+        let path = std::env::temp_dir().join(format!(
+            "srs_load_test_{}_{}.scm",
+            std::process::id(),
+            contents.len()
+        ));
+        let mut file = std::fs::File::create(&path).unwrap();
+        file.write_all(contents.as_bytes()).unwrap();
+        path.to_str().unwrap().to_string()
+    }
+
+    #[test]
+    fn load_defines_bindings_in_current_env() {
+        let path = write_temp_scm("(define square (lambda (x) (* x x)))");
+        let src = format!("(load \"{}\") (square 6)", path);
+        assert!(matches!(ok(&src), SrsValue::Integer(36)));
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn load_returns_value_of_last_expression() {
+        let path = write_temp_scm("(+ 1 2) (+ 3 4)");
+        let src = format!("(load \"{}\")", path);
+        assert!(matches!(ok(&src), SrsValue::Integer(7)));
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn load_missing_file_fails() {
+        assert!(eval_src("(load \"/nonexistent/path/to/file.scm\")").is_err());
+    }
+
+    #[test]
+    fn load_no_args_fails() {
+        assert!(eval_src("(load)").is_err());
+    }
+
+    #[test]
+    fn load_too_many_args_fails() {
+        assert!(eval_src("(load \"a\" \"b\")").is_err());
+    }
+
+    #[test]
+    fn load_non_string_path_fails() {
+        assert!(eval_src("(load 42)").is_err());
     }
 }
