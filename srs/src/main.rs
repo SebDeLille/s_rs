@@ -1,9 +1,8 @@
 use std::io::{self, Write};
 use std::rc::Rc;
 
-use libsrs::interpretor::evaluator::{eval, global_env};
-use libsrs::interpretor::lexical_analyzer::get_lexemes;
-use libsrs::interpretor::reader::read_all;
+use libsrs::interpretor::evaluator::global_env;
+use libsrs::interpretor::repl::{EvalOutcome, eval_source};
 use libsrs::types::core::{Env, SrsValue};
 
 fn main() {
@@ -41,16 +40,18 @@ fn main() {
 }
 
 fn eval_line(line: &str, env: &Rc<Env>) -> Result<(), String> {
-    let lexemes = get_lexemes(line).map_err(|e| e.to_string())?;
-    let values = read_all(lexemes).map_err(|e| e.to_string())?;
-
-    for value in &values {
-        match eval(value, env) {
-            Ok(SrsValue::Unspecified) => {}
-            Ok(result) => println!("{}", result),
-            Err(e) => return Err(e.to_string()),
+    match eval_source(line, env)? {
+        // The CLI evaluates one line at a time and doesn't support
+        // multi-line input: an incomplete form is just reported as an
+        // error, same as before this pipeline was factored out.
+        EvalOutcome::Incomplete => Err("unexpected end of input".to_string()),
+        EvalOutcome::Done(values) => {
+            for value in values {
+                if !matches!(value, SrsValue::Unspecified) {
+                    println!("{}", value);
+                }
+            }
+            Ok(())
         }
     }
-
-    Ok(())
 }
