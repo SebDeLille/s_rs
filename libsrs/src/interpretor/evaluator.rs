@@ -252,6 +252,20 @@ pub fn global_env() -> Rc<Env> {
             func: native_vector_fill,
         }),
     );
+    env.define(
+        "display".to_string(),
+        SrsValue::Native(Native {
+            name: "display",
+            func: native_display,
+        }),
+    );
+    env.define(
+        "newline".to_string(),
+        SrsValue::Native(Native {
+            name: "newline",
+            func: native_newline,
+        }),
+    );
     env
 }
 
@@ -281,6 +295,7 @@ fn eval_combination(expr: &SrsValue, env: &Rc<Env>) -> Result<SrsValue, EvalErro
             "define" => return eval_define(&items[1..], env),
             "lambda" => return eval_lambda(&items[1..], env),
             "let" => return eval_let(&items[1..], env),
+            "do" => return eval_do(&items[1..], env),
             "if" => return eval_if(&items[1..], env),
             "quote" => return eval_quote(&items[1..]),
             "quasiquote" => return eval_quasiquote(&items[1..], env),
@@ -363,6 +378,101 @@ fn eval_let(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
                 result = eval(expr, &let_env)?;
             }
             Ok(result)
+        }
+    }
+}
+
+/// Handles `(do ((<var> <init> [<step>])...) (<test> <expr>...) <command>...)`.
+///
+/// Each `<init>` is evaluated once in the enclosing environment and bound to
+/// `<var>` in a fresh environment. On every iteration `<test>` is evaluated
+/// first: if true, the result expressions are evaluated in sequence and
+/// their last value (or [`SrsValue::Unspecified`] if there are none) is
+/// returned. Otherwise the `<command>`s are evaluated for their side
+/// effects, then all `<step>` expressions are evaluated in the current
+/// iteration's environment *before* any variable is rebound, and their
+/// values are bound simultaneously to `<var>` in a fresh environment for the
+/// next iteration. A `<var>` without a `<step>` keeps its value across
+/// iterations.
+fn eval_do(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
+    match args {
+        [] => err(EvalErrorKind::NotEnoughArguments),
+        [_] => err(EvalErrorKind::NotEnoughArguments),
+        [bindings_spec, test_spec, commands @ ..] => {
+            let bindings = list_to_vec(bindings_spec)?;
+
+            struct DoVar {
+                name: String,
+                step: Option<SrsValue>,
+            }
+
+            let mut vars = Vec::with_capacity(bindings.len());
+            let mut do_env = Env::new(Some(env.clone()));
+
+            for binding in &bindings {
+                let parts = list_to_vec(binding)?;
+                match parts.as_slice() {
+                    [name, init_expr] => {
+                        let name = match name {
+                            SrsValue::Symbol(s) => s.clone(),
+                            _ => return err(EvalErrorKind::WrongType),
+                        };
+                        let value = eval(init_expr, env)?;
+                        do_env.define(name.clone(), value);
+                        vars.push(DoVar { name, step: None });
+                    }
+                    [name, init_expr, step_expr] => {
+                        let name = match name {
+                            SrsValue::Symbol(s) => s.clone(),
+                            _ => return err(EvalErrorKind::WrongType),
+                        };
+                        let value = eval(init_expr, env)?;
+                        do_env.define(name.clone(), value);
+                        vars.push(DoVar {
+                            name,
+                            step: Some(step_expr.clone()),
+                        });
+                    }
+                    _ => return err(EvalErrorKind::WrongType),
+                }
+            }
+
+            let test_parts = list_to_vec(test_spec)?;
+            let (test_expr, result_exprs) = match test_parts.as_slice() {
+                [] => return err(EvalErrorKind::NotEnoughArguments),
+                [test, results @ ..] => (test.clone(), results.to_vec()),
+            };
+
+            loop {
+                if is_truthy(&eval(&test_expr, &do_env)?) {
+                    let mut result = SrsValue::Unspecified;
+                    for expr in &result_exprs {
+                        result = eval(expr, &do_env)?;
+                    }
+                    return Ok(result);
+                }
+
+                for command in commands {
+                    eval(command, &do_env)?;
+                }
+
+                let mut next_values = Vec::with_capacity(vars.len());
+                for var in &vars {
+                    let value = match &var.step {
+                        Some(step_expr) => eval(step_expr, &do_env)?,
+                        None => do_env
+                            .get(&var.name)
+                            .expect("do variable should be bound"),
+                    };
+                    next_values.push(value);
+                }
+
+                let next_env = Env::new(Some(env.clone()));
+                for (var, value) in vars.iter().zip(next_values) {
+                    next_env.define(var.name.clone(), value);
+                }
+                do_env = next_env;
+            }
         }
     }
 }
@@ -794,6 +904,40 @@ fn native_cons(args: &[SrsValue]) -> Result<SrsValue, String> {
 }
 
 /// `(car pair)`: returns the first element of a pair.
+/// `(display value)`: writes `value` to standard output using its
+/// human-readable representation (no quotes around strings, characters
+/// printed as themselves). Returns [`SrsValue::Unspecified`].
+fn native_display(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [value] => {
+            use std::io::Write;
+            print!("{}", value.display_repr());
+            std::io::stdout()
+                .flush()
+                .map_err(|e| format!("display: {}", e))?;
+            Ok(SrsValue::Unspecified)
+        }
+        [] => Err("not enough arguments to display".to_string()),
+        _ => Err("too many arguments to display".to_string()),
+    }
+}
+
+/// `(newline)`: writes a line break to standard output. Returns
+/// [`SrsValue::Unspecified`].
+fn native_newline(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [] => {
+            use std::io::Write;
+            println!();
+            std::io::stdout()
+                .flush()
+                .map_err(|e| format!("newline: {}", e))?;
+            Ok(SrsValue::Unspecified)
+        }
+        _ => Err("too many arguments to newline".to_string()),
+    }
+}
+
 fn native_car(args: &[SrsValue]) -> Result<SrsValue, String> {
     match args {
         [SrsValue::Pair(cell)] => Ok(cell.borrow().0.clone()),
@@ -1462,6 +1606,84 @@ mod tests {
     #[test]
     fn if_too_many_args_fails() {
         assert!(eval_src("(if #t 1 2 3)").is_err());
+    }
+
+    #[test]
+    fn do_sums_from_zero_to_nine() {
+        let src = "(do ((i 0 (+ i 1))
+                         (sum 0 (+ sum i)))
+                        ((= i 10) sum))";
+        assert!(matches!(ok(src), SrsValue::Integer(45)));
+    }
+
+    #[test]
+    fn do_without_step_keeps_value() {
+        let src = "(do ((x 1) (i 0 (+ i 1)))
+                        ((= i 3) x))";
+        assert!(matches!(ok(src), SrsValue::Integer(1)));
+    }
+
+    #[test]
+    fn do_steps_are_evaluated_simultaneously() {
+        // `last`'s step reads the *previous* value of `i`, proving steps are
+        // all evaluated before any variable is rebound.
+        let src = "(do ((i 0 (+ i 1))
+                         (last -1 i))
+                        ((= i 3) last))";
+        assert!(matches!(ok(src), SrsValue::Integer(2)));
+    }
+
+    #[test]
+    fn do_with_no_result_exprs_is_unspecified() {
+        assert!(matches!(
+            ok("(do ((i 0 (+ i 1))) ((= i 3)))"),
+            SrsValue::Unspecified
+        ));
+    }
+
+    #[test]
+    fn do_test_only_runs_once_when_immediately_true() {
+        assert!(matches!(ok("(do ((i 0)) (#t i))"), SrsValue::Integer(0)));
+    }
+
+    #[test]
+    fn do_too_few_args_fails() {
+        assert!(eval_src("(do ((i 0)))").is_err());
+    }
+
+    #[test]
+    fn display_returns_unspecified() {
+        assert!(matches!(ok("(display 42)"), SrsValue::Unspecified));
+    }
+
+    #[test]
+    fn display_of_a_sequence_evaluates_all() {
+        // Chains a couple of displays followed by a normal expression to
+        // make sure `display` doesn't disturb subsequent evaluation.
+        assert!(matches!(
+            ok("(display \"a\") (display 1) (+ 1 2)"),
+            SrsValue::Integer(3)
+        ));
+    }
+
+    #[test]
+    fn display_no_args_fails() {
+        assert!(eval_src("(display)").is_err());
+    }
+
+    #[test]
+    fn display_too_many_args_fails() {
+        assert!(eval_src("(display 1 2)").is_err());
+    }
+
+    #[test]
+    fn newline_returns_unspecified() {
+        assert!(matches!(ok("(newline)"), SrsValue::Unspecified));
+    }
+
+    #[test]
+    fn newline_too_many_args_fails() {
+        assert!(eval_src("(newline 1)").is_err());
     }
 
     #[test]

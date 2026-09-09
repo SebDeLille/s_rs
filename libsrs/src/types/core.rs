@@ -158,6 +158,59 @@ impl fmt::Display for SrsValue {
     }
 }
 
+impl SrsValue {
+    /// Formats the value the way R5RS `display` does: strings are printed
+    /// without surrounding quotes/escapes and characters are printed as
+    /// themselves rather than as a `#\name` literal. Nested values (inside
+    /// pairs and vectors) are formatted the same way, recursively. Every
+    /// other value looks the same as its [`fmt::Display`] (i.e. `write`)
+    /// representation.
+    pub fn display_repr(&self) -> String {
+        match self {
+            SrsValue::Character(c) => c.to_string(),
+            SrsValue::String(s) => s.borrow().clone(),
+            SrsValue::Pair(_) => {
+                let mut out = String::from("(");
+                let mut first = true;
+                let mut cur = self.clone();
+                loop {
+                    match cur {
+                        SrsValue::Pair(p) => {
+                            let (car, cdr) = p.borrow().clone();
+                            if !first {
+                                out.push(' ');
+                            }
+                            first = false;
+                            out.push_str(&car.display_repr());
+                            cur = cdr;
+                        }
+                        SrsValue::Nil => break,
+                        other => {
+                            out.push_str(" . ");
+                            out.push_str(&other.display_repr());
+                            break;
+                        }
+                    }
+                }
+                out.push(')');
+                out
+            }
+            SrsValue::Vector(v) => {
+                let mut out = String::from("#(");
+                for (i, item) in v.borrow().iter().enumerate() {
+                    if i > 0 {
+                        out.push(' ');
+                    }
+                    out.push_str(&item.display_repr());
+                }
+                out.push(')');
+                out
+            }
+            other => other.to_string(),
+        }
+    }
+}
+
 fn format_char(c: char) -> String {
     match c {
         ' ' => "space".to_string(),
@@ -173,4 +226,48 @@ fn format_char(c: char) -> String {
 pub enum PromiseState {
     Forced(SrsValue),
     Delayed(Vec<SrsValue>, Rc<Env>),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_repr_of_string_has_no_quotes() {
+        let value = SrsValue::String(Rc::new(RefCell::new("hi".to_string())));
+        assert_eq!(value.display_repr(), "hi");
+        assert_eq!(value.to_string(), "\"hi\"");
+    }
+
+    #[test]
+    fn display_repr_of_character_is_the_bare_char() {
+        let value = SrsValue::Character('a');
+        assert_eq!(value.display_repr(), "a");
+        assert_eq!(value.to_string(), "#\\a");
+    }
+
+    #[test]
+    fn display_repr_of_integer_matches_display_trait() {
+        let value = SrsValue::Integer(42);
+        assert_eq!(value.display_repr(), "42");
+    }
+
+    #[test]
+    fn display_repr_recurses_into_pairs() {
+        let value = SrsValue::Pair(Rc::new(RefCell::new((
+            SrsValue::String(Rc::new(RefCell::new("hi".to_string()))),
+            SrsValue::Nil,
+        ))));
+        assert_eq!(value.display_repr(), "(hi)");
+        assert_eq!(value.to_string(), "(\"hi\")");
+    }
+
+    #[test]
+    fn display_repr_recurses_into_vectors() {
+        let value = SrsValue::Vector(Rc::new(RefCell::new(vec![
+            SrsValue::Character('x'),
+            SrsValue::Integer(1),
+        ])));
+        assert_eq!(value.display_repr(), "#(x 1)");
+    }
 }
