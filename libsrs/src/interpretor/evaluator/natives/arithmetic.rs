@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use crate::types::core::{Env, Native, SrsValue};
 
-use super::{compare_chain, fold_numbers, negate, reciprocal};
+use super::{compare_chain, fold_numbers, negate, numeric_cmp, numeric_to_f64, reciprocal};
 
 pub(super) fn install(env: &Rc<Env>) {
     env.define(
@@ -69,6 +69,13 @@ pub(super) fn install(env: &Rc<Env>) {
         }),
     );
     env.define(
+        "max".to_string(),
+        SrsValue::Native(Native {
+            name: "max",
+            func: Rc::new(native_max),
+        }),
+    );
+    env.define(
         "not".to_string(),
         SrsValue::Native(Native {
             name: "not",
@@ -132,6 +139,30 @@ fn native_le(args: &[SrsValue]) -> Result<SrsValue, String> {
 
 fn native_ge(args: &[SrsValue]) -> Result<SrsValue, String> {
     compare_chain(">=", args, |ord| ord != std::cmp::Ordering::Less)
+}
+
+/// `(max n1 n2 ...)`: returns the largest of its arguments. Per R5RS, if
+/// any argument is inexact (`Float`), the result is coerced to inexact
+/// even when the largest value came from an exact argument.
+fn native_max(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [] => Err("not enough arguments to max".to_string()),
+        [first, rest @ ..] => {
+            let mut best = first.clone();
+            let mut inexact = matches!(first, SrsValue::Float(_));
+            for value in rest {
+                inexact |= matches!(value, SrsValue::Float(_));
+                if numeric_cmp(value, &best)? == std::cmp::Ordering::Greater {
+                    best = value.clone();
+                }
+            }
+            if inexact && !matches!(best, SrsValue::Float(_)) {
+                Ok(SrsValue::Float(numeric_to_f64(&best)?))
+            } else {
+                Ok(best)
+            }
+        }
+    }
 }
 
 /// `(not obj)`: `#t` if `obj` is `#f`, `#f` for any other value (per R5RS,

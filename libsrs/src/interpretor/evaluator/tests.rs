@@ -93,6 +93,29 @@ fn float_coercion() {
 }
 
 #[test]
+fn max_of_several_integers() {
+    assert!(matches!(ok("(max 1 3 2)"), SrsValue::Integer(3)));
+}
+
+#[test]
+fn max_single_argument() {
+    assert!(matches!(ok("(max 5)"), SrsValue::Integer(5)));
+}
+
+#[test]
+fn max_no_args_fails() {
+    assert!(eval_src("(max)").is_err());
+}
+
+#[test]
+fn max_inexact_contagion() {
+    match ok("(max 1 2.0)") {
+        SrsValue::Float(f) => assert!((f - 2.0).abs() < f64::EPSILON),
+        other => panic!("expected float, got {:?}", other),
+    }
+}
+
+#[test]
 fn sin_of_zero() {
     match ok("(sin 0)") {
         SrsValue::Float(f) => assert!((f - 0.0).abs() < f64::EPSILON),
