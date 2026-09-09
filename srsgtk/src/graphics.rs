@@ -13,6 +13,7 @@ use std::rc::Rc;
 use gtk4::DrawingArea;
 use gtk4::prelude::*;
 
+use libsrs::interpretor::evaluator::apply;
 use libsrs::types::core::{Env, Native, SrsValue};
 
 /// RGB color in the `[0.0, 1.0]` range, as expected by Cairo.
@@ -60,11 +61,17 @@ enum DrawCommand {
     },
 }
 
-/// Shared canvas state: the commands recorded so far and the color used
-/// by the next drawing primitive.
+/// Shared canvas state: the commands recorded so far, the color used by
+/// the next drawing primitive, and the current size of the drawing area.
 struct CanvasState {
     commands: Vec<DrawCommand>,
     current_color: Color,
+    width: i32,
+    height: i32,
+    /// Scheme procedure `(lambda (width height) ...)` invoked whenever
+    /// the canvas is (re)drawn at a given size, so it can recompute and
+    /// re-emit `draw-*` commands proportionally to the new size.
+    redraw_hook: Option<SrsValue>,
 }
 
 impl CanvasState {
@@ -72,6 +79,29 @@ impl CanvasState {
         CanvasState {
             commands: Vec::new(),
             current_color: DEFAULT_COLOR,
+            width: 0,
+            height: 0,
+            redraw_hook: None,
+        }
+    }
+}
+
+/// Calls `state`'s `redraw_hook`, if any, with the current `width` and
+/// `height`, so it can clear and re-emit `draw-*` commands for the new
+/// size. Errors from the Scheme procedure are printed to stderr but
+/// otherwise ignored, so a buggy hook doesn't crash the GUI.
+fn call_redraw_hook(state: &Rc<RefCell<CanvasState>>) {
+    let (hook, width, height) = {
+        let state = state.borrow();
+        (state.redraw_hook.clone(), state.width, state.height)
+    };
+    if let Some(hook) = hook {
+        let args = [
+            SrsValue::Integer(width as i64),
+            SrsValue::Integer(height as i64),
+        ];
+        if let Err(err) = apply(&hook, &args) {
+            eprintln!("redraw-hook error: {:?}", err);
         }
     }
 }
@@ -81,6 +111,20 @@ impl CanvasState {
 /// `drawing_area` via Cairo.
 pub fn install(env: &Rc<Env>, drawing_area: &DrawingArea) {
     let state = Rc::new(RefCell::new(CanvasState::new()));
+
+    drawing_area.connect_resize({
+        let state = state.clone();
+        let drawing_area = drawing_area.clone();
+        move |_area, width, height| {
+            {
+                let mut state = state.borrow_mut();
+                state.width = width;
+                state.height = height;
+            }
+            call_redraw_hook(&state);
+            drawing_area.queue_draw();
+        }
+    });
 
     drawing_area.set_draw_func({
         let state = state.clone();
@@ -212,9 +256,49 @@ pub fn install(env: &Rc<Env>, drawing_area: &DrawingArea) {
             Ok(SrsValue::Unspecified)
         }
     });
-}
+    define_native(env, "canvas-width", {
+        let state = state.clone();
+        move |args| {
+            match args {
+                [] => {}
+                _ => return Err("too many arguments to canvas-width".to_string()),
+            }
+            Ok(SrsValue::Integer(state.borrow().width as i64))
+        }
+    });
 
-/// Defines a native procedure named `name` in `env`, wrapping `func` as a
+    define_native(env, "canvas-height", {
+        let state = state.clone();
+        move |args| {
+            match args {
+                [] => {}
+                _ => return Err("too many arguments to canvas-height".to_string()),
+            }
+            Ok(SrsValue::Integer(state.borrow().height as i64))
+        }
+    });
+
+    define_native(env, "set-redraw-hook!", {
+        let state = state.clone();
+        move |args| {
+            let [hook] = args else {
+                return Err("set-redraw-hook!: expected 1 argument (procedure)".to_string());
+            };
+            match hook {
+                SrsValue::Procedure(_) | SrsValue::Native(_) => {}
+                _ => {
+                    return Err(
+                        "set-redraw-hook!: expected a procedure of two arguments (width height)"
+                            .to_string(),
+                    );
+                }
+            }
+            state.borrow_mut().redraw_hook = Some(hook.clone());
+            call_redraw_hook(&state);
+            Ok(SrsValue::Unspecified)
+        }
+    });
+}
 /// [`Native`] closure.
 fn define_native(
     env: &Rc<Env>,
