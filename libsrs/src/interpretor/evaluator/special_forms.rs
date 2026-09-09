@@ -185,9 +185,7 @@ fn eval_do(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
                 for var in &vars {
                     let value = match &var.step {
                         Some(step_expr) => eval(step_expr, &do_env)?,
-                        None => do_env
-                            .get(&var.name)
-                            .expect("do variable should be bound"),
+                        None => do_env.get(&var.name).expect("do variable should be bound"),
                     };
                     next_values.push(value);
                 }
@@ -271,11 +269,10 @@ fn eval_load(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
         kind: EvalErrorKind::Native(format!("load: could not read {}: {}", path, e)),
     })?;
 
-    let lexemes = crate::interpretor::lexical_analyzer::get_lexemes(&source).map_err(|e| {
-        EvalError {
+    let lexemes =
+        crate::interpretor::lexical_analyzer::get_lexemes(&source).map_err(|e| EvalError {
             kind: EvalErrorKind::Native(format!("load: {}: {}", path, e)),
-        }
-    })?;
+        })?;
     let exprs = crate::interpretor::reader::read_all(lexemes).map_err(|e| EvalError {
         kind: EvalErrorKind::Native(format!("load: {}: {}", path, e)),
     })?;

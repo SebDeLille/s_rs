@@ -3,8 +3,8 @@ use std::rc::Rc;
 
 use crate::types::core::{Env, Native, SrsValue};
 
-use super::super::util::{list_to_vec, vec_to_list};
 use super::super::apply;
+use super::super::util::{list_to_vec, vec_to_list};
 
 pub(super) fn install(env: &Rc<Env>) {
     env.define(

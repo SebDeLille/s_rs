@@ -5,9 +5,9 @@ use crate::types::core::{Env, Lambda, SrsValue};
 
 mod natives;
 mod special_forms;
-mod util;
 #[cfg(test)]
 mod tests;
+mod util;
 
 pub use natives::global_env;
 
