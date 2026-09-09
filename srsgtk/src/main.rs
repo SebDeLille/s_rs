@@ -1,5 +1,7 @@
 use gtk4::prelude::*;
-use gtk4::{Application, ApplicationWindow, DrawingArea, Label, Orientation, Paned};
+use gtk4::{Application, ApplicationWindow, DrawingArea, Orientation, Paned};
+
+mod repl;
 
 const APP_ID: &str = "org.srs.srsgtk";
 const WINDOW_WIDTH: i32 = 800;
@@ -26,12 +28,12 @@ fn build_ui(app: &Application) {
         let _ = cr.fill();
     });
 
-    let repl_placeholder = Label::new(Some("REPL (placeholder)"));
-    repl_placeholder.set_vexpand(true);
-    repl_placeholder.set_hexpand(true);
+    let repl_widget = repl::build_repl_widget();
+    repl_widget.set_vexpand(true);
+    repl_widget.set_hexpand(true);
 
     paned.set_start_child(Some(&drawing_area));
-    paned.set_end_child(Some(&repl_placeholder));
+    paned.set_end_child(Some(&repl_widget));
     paned.set_resize_start_child(true);
     paned.set_resize_end_child(true);
     paned.set_shrink_start_child(false);
