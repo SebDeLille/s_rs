@@ -7,14 +7,14 @@ pub(super) fn install(env: &Rc<Env>) {
         "display".to_string(),
         SrsValue::Native(Native {
             name: "display",
-            func: native_display,
+            func: Rc::new(native_display),
         }),
     );
     env.define(
         "newline".to_string(),
         SrsValue::Native(Native {
             name: "newline",
-            func: native_newline,
+            func: Rc::new(native_newline),
         }),
     );
 }

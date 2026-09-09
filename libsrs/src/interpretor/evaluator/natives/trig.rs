@@ -9,28 +9,28 @@ pub(super) fn install(env: &Rc<Env>) {
         "sin".to_string(),
         SrsValue::Native(Native {
             name: "sin",
-            func: native_sin,
+            func: Rc::new(native_sin),
         }),
     );
     env.define(
         "cos".to_string(),
         SrsValue::Native(Native {
             name: "cos",
-            func: native_cos,
+            func: Rc::new(native_cos),
         }),
     );
     env.define(
         "tan".to_string(),
         SrsValue::Native(Native {
             name: "tan",
-            func: native_tan,
+            func: Rc::new(native_tan),
         }),
     );
     env.define(
         "atan".to_string(),
         SrsValue::Native(Native {
             name: "atan",
-            func: native_atan,
+            func: Rc::new(native_atan),
         }),
     );
 }

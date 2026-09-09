@@ -11,63 +11,63 @@ pub(super) fn install(env: &Rc<Env>) {
         "vector".to_string(),
         SrsValue::Native(Native {
             name: "vector",
-            func: native_vector,
+            func: Rc::new(native_vector),
         }),
     );
     env.define(
         "make-vector".to_string(),
         SrsValue::Native(Native {
             name: "make-vector",
-            func: native_make_vector,
+            func: Rc::new(native_make_vector),
         }),
     );
     env.define(
         "vector?".to_string(),
         SrsValue::Native(Native {
             name: "vector?",
-            func: native_vector_p,
+            func: Rc::new(native_vector_p),
         }),
     );
     env.define(
         "vector-length".to_string(),
         SrsValue::Native(Native {
             name: "vector-length",
-            func: native_vector_length,
+            func: Rc::new(native_vector_length),
         }),
     );
     env.define(
         "vector-ref".to_string(),
         SrsValue::Native(Native {
             name: "vector-ref",
-            func: native_vector_ref,
+            func: Rc::new(native_vector_ref),
         }),
     );
     env.define(
         "vector-set!".to_string(),
         SrsValue::Native(Native {
             name: "vector-set!",
-            func: native_vector_set,
+            func: Rc::new(native_vector_set),
         }),
     );
     env.define(
         "vector->list".to_string(),
         SrsValue::Native(Native {
             name: "vector->list",
-            func: native_vector_to_list,
+            func: Rc::new(native_vector_to_list),
         }),
     );
     env.define(
         "list->vector".to_string(),
         SrsValue::Native(Native {
             name: "list->vector",
-            func: native_list_to_vector,
+            func: Rc::new(native_list_to_vector),
         }),
     );
     env.define(
         "vector-fill!".to_string(),
         SrsValue::Native(Native {
             name: "vector-fill!",
-            func: native_vector_fill,
+            func: Rc::new(native_vector_fill),
         }),
     );
 }

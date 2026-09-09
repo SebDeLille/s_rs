@@ -11,35 +11,35 @@ pub(super) fn install(env: &Rc<Env>) {
         "cons".to_string(),
         SrsValue::Native(Native {
             name: "cons",
-            func: native_cons,
+            func: Rc::new(native_cons),
         }),
     );
     env.define(
         "car".to_string(),
         SrsValue::Native(Native {
             name: "car",
-            func: native_car,
+            func: Rc::new(native_car),
         }),
     );
     env.define(
         "cdr".to_string(),
         SrsValue::Native(Native {
             name: "cdr",
-            func: native_cdr,
+            func: Rc::new(native_cdr),
         }),
     );
     env.define(
         "apply".to_string(),
         SrsValue::Native(Native {
             name: "apply",
-            func: native_apply,
+            func: Rc::new(native_apply),
         }),
     );
     env.define(
         "map".to_string(),
         SrsValue::Native(Native {
             name: "map",
-            func: native_map,
+            func: Rc::new(native_map),
         }),
     );
 }
