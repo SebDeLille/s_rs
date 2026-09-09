@@ -49,6 +49,13 @@ pub(super) fn install(env: &Rc<Env>) {
             func: Rc::new(native_length),
         }),
     );
+    env.define(
+        "null?".to_string(),
+        SrsValue::Native(Native {
+            name: "null?",
+            func: Rc::new(native_is_null),
+        }),
+    );
 }
 
 /// `(cons car cdr)`: allocates a fresh mutable pair.
@@ -132,5 +139,15 @@ fn native_length(args: &[SrsValue]) -> Result<SrsValue, String> {
         }
         [] => Err("not enough arguments to length".to_string()),
         _ => Err("too many arguments to length".to_string()),
+    }
+}
+
+/// `(null? obj)`: returns `#t` if `obj` is the empty list, `#f` otherwise
+/// (R5RS section 6.3.2).
+fn native_is_null(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [obj] => Ok(SrsValue::Boolean(matches!(obj, SrsValue::Nil))),
+        [] => Err("not enough arguments to null?".to_string()),
+        _ => Err("too many arguments to null?".to_string()),
     }
 }

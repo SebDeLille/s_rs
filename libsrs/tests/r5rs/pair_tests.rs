@@ -58,3 +58,27 @@ fn length_counts_a_hand_built_list() {
     let src = "(length (cons 1 (cons 2 (cons 3 '()))))";
     assert!(matches!(eval_src(src), SrsValue::Integer(3)));
 }
+
+#[test]
+fn null_returns_true_for_the_empty_list() {
+    assert!(matches!(
+        eval_src("(null? '())"),
+        SrsValue::Boolean(true)
+    ));
+}
+
+#[test]
+fn null_returns_false_for_a_non_empty_list() {
+    assert!(matches!(
+        eval_src("(null? '(1))"),
+        SrsValue::Boolean(false)
+    ));
+}
+
+#[test]
+fn null_returns_false_for_a_pair() {
+    assert!(matches!(
+        eval_src("(null? (cons 1 2))"),
+        SrsValue::Boolean(false)
+    ));
+}
