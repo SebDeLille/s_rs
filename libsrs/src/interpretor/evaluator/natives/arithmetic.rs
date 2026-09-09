@@ -9,70 +9,70 @@ pub(super) fn install(env: &Rc<Env>) {
         "+".to_string(),
         SrsValue::Native(Native {
             name: "+",
-            func: native_add,
+            func: Rc::new(native_add),
         }),
     );
     env.define(
         "-".to_string(),
         SrsValue::Native(Native {
             name: "-",
-            func: native_sub,
+            func: Rc::new(native_sub),
         }),
     );
     env.define(
         "*".to_string(),
         SrsValue::Native(Native {
             name: "*",
-            func: native_mul,
+            func: Rc::new(native_mul),
         }),
     );
     env.define(
         "/".to_string(),
         SrsValue::Native(Native {
             name: "/",
-            func: native_div,
+            func: Rc::new(native_div),
         }),
     );
     env.define(
         "=".to_string(),
         SrsValue::Native(Native {
             name: "=",
-            func: native_num_eq,
+            func: Rc::new(native_num_eq),
         }),
     );
     env.define(
         "<".to_string(),
         SrsValue::Native(Native {
             name: "<",
-            func: native_lt,
+            func: Rc::new(native_lt),
         }),
     );
     env.define(
         ">".to_string(),
         SrsValue::Native(Native {
             name: ">",
-            func: native_gt,
+            func: Rc::new(native_gt),
         }),
     );
     env.define(
         "<=".to_string(),
         SrsValue::Native(Native {
             name: "<=",
-            func: native_le,
+            func: Rc::new(native_le),
         }),
     );
     env.define(
         ">=".to_string(),
         SrsValue::Native(Native {
             name: ">=",
-            func: native_ge,
+            func: Rc::new(native_ge),
         }),
     );
     env.define(
         "not".to_string(),
         SrsValue::Native(Native {
             name: "not",
-            func: native_not,
+            func: Rc::new(native_not),
         }),
     );
 }

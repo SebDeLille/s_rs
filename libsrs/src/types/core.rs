@@ -64,7 +64,10 @@ impl fmt::Debug for Lambda {
 }
 
 /// Native (builtin) procedure implemented in Rust.
-pub type NativeFn = fn(&[SrsValue]) -> Result<SrsValue, String>;
+/// Boxed in an `Rc` so that native procedures can be closures capturing
+/// shared state (e.g. a Cairo surface for GTK canvas primitives), not just
+/// plain function pointers.
+pub type NativeFn = Rc<dyn Fn(&[SrsValue]) -> Result<SrsValue, String>>;
 
 #[derive(Clone)]
 pub struct Native {
