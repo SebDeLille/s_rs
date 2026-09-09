@@ -12,7 +12,6 @@ use gtk4::{
     TextView, WrapMode,
 };
 
-use libsrs::interpretor::evaluator::global_env;
 use libsrs::interpretor::repl::{EvalOutcome, eval_source};
 use libsrs::types::core::{Env, SrsValue};
 
@@ -33,7 +32,10 @@ struct ReplState {
 
 /// Builds the REPL widget: a scrollable output log on top of a single-line
 /// input entry. Returns the top-level widget to embed in the window.
-pub fn build_repl_widget() -> GtkBox {
+/// Evaluates forms in `env`, which the caller is responsible for
+/// populating (e.g. with the base global bindings and any host-specific
+/// primitives such as the canvas drawing procedures).
+pub fn build_repl_widget(env: Rc<Env>) -> GtkBox {
     let output_buffer = TextBuffer::builder().build();
     let error_tag = output_buffer
         .create_tag(Some("error"), &[("foreground", &"#e06c75")])
@@ -64,7 +66,7 @@ pub fn build_repl_widget() -> GtkBox {
         .build();
 
     let state = Rc::new(ReplState {
-        env: global_env(),
+        env,
         pending: RefCell::new(String::new()),
         history: RefCell::new(Vec::new()),
         history_cursor: Cell::new(None),
