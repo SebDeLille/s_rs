@@ -13,6 +13,27 @@ fn eval_all(scm: &str) -> Result<SrsValue, String> {
     Ok(result)
 }
 
+fn string_value(value: SrsValue) -> String {
+    match value {
+        SrsValue::String(s) => s.borrow().clone(),
+        other => panic!("expected string, got {}", other),
+    }
+}
+
+fn char_value(value: SrsValue) -> char {
+    match value {
+        SrsValue::Character(c) => c,
+        other => panic!("expected character, got {}", other),
+    }
+}
+
+fn boolean_value(value: SrsValue) -> bool {
+    match value {
+        SrsValue::Boolean(b) => b,
+        other => panic!("expected boolean, got {}", other),
+    }
+}
+
 fn eval_src(scm: &str) -> SrsValue {
     eval_all(scm).unwrap()
 }
@@ -113,56 +134,39 @@ fn read_char_rejects_output_port() {
 }
 
 #[test]
-#[ignore = "requires data on stdin; run with `echo -n 'x' | cargo test -- --ignored`"]
-fn read_char_on_current_input_port_returns_character_or_eof() {
-    // This test exercises the real standard input port. String ports
-    // (step 6) will allow a fully automated test.
-    let values = read_all(get_lexemes("(read-char)").unwrap()).unwrap();
-    let env = global_env();
-    let result = eval(&values[0], &env).unwrap();
-    assert!(
-        matches!(result, SrsValue::Character(_) | SrsValue::Eof),
-        "expected #<char> or #<eof>, got {}",
-        result
+fn read_char_on_string_port_returns_character_or_eof() {
+    assert_eq!(
+        char_value(eval_src("(read-char (open-input-string \"x\"))")),
+        'x'
     );
+    assert!(matches!(
+        eval_src("(read-char (open-input-string \"\"))"),
+        SrsValue::Eof
+    ));
 }
 
 #[test]
-#[ignore = "requires data on stdin; run with `echo -n 'x' | cargo test -- --ignored`"]
-fn peek_char_on_current_input_port_returns_character_or_eof() {
-    // See read_char_on_current_input_port_returns_character_or_eof.
-    let values = read_all(get_lexemes("(peek-char)").unwrap()).unwrap();
-    let env = global_env();
-    let result = eval(&values[0], &env).unwrap();
-    assert!(
-        matches!(result, SrsValue::Character(_) | SrsValue::Eof),
-        "expected #<char> or #<eof>, got {}",
-        result
+fn peek_char_on_string_port_returns_character_or_eof() {
+    assert_eq!(
+        char_value(eval_src("(peek-char (open-input-string \"x\"))")),
+        'x'
     );
+    assert!(matches!(
+        eval_src("(peek-char (open-input-string \"\"))"),
+        SrsValue::Eof
+    ));
 }
 
 #[test]
-#[ignore = "requires data on stdin; run twice with a single-char input: peek then read should match"]
-fn peek_then_read_return_same_character() {
-    let env = global_env();
-    let first = eval(
-        &read_all(get_lexemes("(peek-char)").unwrap()).unwrap()[0],
-        &env,
-    )
-    .unwrap();
-    let second = eval(
-        &read_all(get_lexemes("(read-char)").unwrap()).unwrap()[0],
-        &env,
-    )
-    .unwrap();
-    match (&first, &second) {
-        (SrsValue::Character(a), SrsValue::Character(b)) if a == b => {}
-        (SrsValue::Eof, SrsValue::Eof) => {}
-        _ => panic!(
-            "expected peek and read to return the same character, got {} and {}",
-            first, second
-        ),
-    }
+fn peek_then_read_return_same_character_on_string_port() {
+    assert_eq!(
+        eval_src("(let ((p (open-input-string \"x\"))) (peek-char p))").to_string(),
+        "#\\x"
+    );
+    assert_eq!(
+        eval_src("(let ((p (open-input-string \"ab\"))) (peek-char p) (read-char p))").to_string(),
+        "#\\a"
+    );
 }
 
 #[test]
@@ -209,14 +213,65 @@ fn char_ready_with_input_port_returns_boolean() {
 }
 
 #[test]
-#[ignore = "requires data on stdin; run with `echo -n 'x' | cargo test -- --ignored`"]
-fn read_line_on_current_input_port_returns_string_or_eof() {
-    let values = read_all(get_lexemes("(read-line)").unwrap()).unwrap();
-    let env = global_env();
-    let result = eval(&values[0], &env).unwrap();
-    assert!(
-        matches!(result, SrsValue::String(_) | SrsValue::Eof),
-        "expected string or eof, got {}",
-        result
+fn read_line_on_string_port_returns_string_or_eof() {
+    assert_eq!(
+        string_value(eval_src("(read-line (open-input-string \"abc\ndef\"))")),
+        "abc"
     );
+    assert!(matches!(
+        eval_src("(read-line (open-input-string \"\"))"),
+        SrsValue::Eof
+    ));
+}
+
+#[test]
+fn open_input_string_creates_input_port() {
+    assert!(eval_all("(open-input-string \"hello\")").is_ok());
+}
+
+#[test]
+fn open_input_string_requires_string() {
+    assert!(eval_all("(open-input-string 42)").is_err());
+    assert!(eval_all("(open-input-string)").is_err());
+    assert!(eval_all("(open-input-string \"a\" \"b\")").is_err());
+}
+
+#[test]
+fn open_output_string_creates_output_port() {
+    assert!(eval_all("(open-output-string)").is_ok());
+    assert!(eval_all("(open-output-string 1)").is_err());
+}
+
+#[test]
+fn get_output_string_returns_accumulated_content() {
+    let result =
+        eval_src("(let ((p (open-output-string))) (write-char #\\x p) (get-output-string p))");
+    assert_eq!(string_value(result), "x");
+}
+
+#[test]
+fn get_output_string_requires_output_string_port() {
+    assert!(eval_all("(get-output-string)").is_err());
+    assert!(eval_all("(get-output-string (current-output-port))").is_err());
+    assert!(eval_all("(get-output-string (open-input-string \"x\"))").is_err());
+}
+
+#[test]
+fn write_char_requires_character() {
+    assert!(eval_all("(write-char \"x\")").is_err());
+}
+
+#[test]
+fn write_char_rejects_input_port() {
+    assert!(eval_all("(write-char #\\x (open-input-string \"x\"))").is_err());
+}
+
+#[test]
+fn char_ready_on_string_port_reflects_remaining_data() {
+    assert!(boolean_value(eval_src(
+        "(char-ready? (open-input-string \"x\"))"
+    )));
+    assert!(!boolean_value(eval_src(
+        "(let ((p (open-input-string \"\"))) (char-ready? p))"
+    )));
 }

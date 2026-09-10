@@ -84,6 +84,34 @@ pub(super) fn install(
             func: Rc::new(move |args| native_char_ready_p(args, &stdin_for_char_ready)),
         }),
     );
+    env.define(
+        "open-input-string".to_string(),
+        SrsValue::Native(Native {
+            name: "open-input-string",
+            func: Rc::new(native_open_input_string),
+        }),
+    );
+    env.define(
+        "open-output-string".to_string(),
+        SrsValue::Native(Native {
+            name: "open-output-string",
+            func: Rc::new(native_open_output_string),
+        }),
+    );
+    env.define(
+        "get-output-string".to_string(),
+        SrsValue::Native(Native {
+            name: "get-output-string",
+            func: Rc::new(native_get_output_string),
+        }),
+    );
+    env.define(
+        "write-char".to_string(),
+        SrsValue::Native(Native {
+            name: "write-char",
+            func: Rc::new(native_write_char),
+        }),
+    );
 }
 
 /// `(display value)`: writes `value` to standard output using its
@@ -178,6 +206,24 @@ fn input_port_from_args(
     }
 }
 
+/// Resolves the port argument for output procedures.
+/// Accepts either zero arguments (use the default stdout port) or one
+/// argument that must be an output port.
+#[allow(dead_code)]
+fn output_port_from_args(
+    proc_name: &str,
+    args: &[SrsValue],
+    default: &Rc<RefCell<PortData>>,
+) -> Result<Rc<RefCell<PortData>>, String> {
+    match args {
+        [] => Ok(default.clone()),
+        [SrsValue::Port(port)] if port.borrow().is_output_port() => Ok(port.clone()),
+        [SrsValue::Port(_)] => Err(format!("{}: not an output port", proc_name)),
+        [_] => Err(format!("wrong type: expected output port to {}", proc_name)),
+        _ => Err(format!("too many arguments to {}", proc_name)),
+    }
+}
+
 /// `(read-char [port])`: reads and consumes one character from the input
 /// port, returning `eof-object` at end of file.
 fn native_read_char(
@@ -213,13 +259,76 @@ fn native_read_line(
 /// input port, `#f` otherwise.
 ///
 /// NOTE: Correct implementation for stdin is non-trivial because the
-/// underlying `BufReader` may block on real terminal input. Until string
-/// ports (step 6) or non-blocking input handling is available, this
-/// procedure conservatively returns `#t` for input ports.
+/// underlying `BufReader` may block on real terminal input. String ports
+/// report availability based on remaining characters.
 fn native_char_ready_p(
     args: &[SrsValue],
     stdin_port: &Rc<RefCell<PortData>>,
 ) -> Result<SrsValue, String> {
     let port = input_port_from_args("char-ready?", args, stdin_port)?;
-    Ok(SrsValue::Boolean(port.borrow().is_input_port()))
+    let ready = match &*port.borrow() {
+        PortData::InputStdin { .. } => true,
+        PortData::InputString(chars, pos) => *pos < chars.len(),
+        _ => false,
+    };
+    Ok(SrsValue::Boolean(ready))
+}
+
+/// `(open-input-string s)`: returns a new input port reading from string `s`.
+fn native_open_input_string(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [SrsValue::String(s)] => Ok(SrsValue::Port(Rc::new(RefCell::new(
+            PortData::input_string(s.borrow().clone()),
+        )))),
+        [SrsValue::Symbol(_)] => Err("open-input-string: expected string".to_string()),
+        [] => Err("not enough arguments to open-input-string".to_string()),
+        [_] => Err("wrong type: expected string".to_string()),
+        _ => Err("too many arguments to open-input-string".to_string()),
+    }
+}
+
+/// `(open-output-string)`: returns a new output port accumulating into a
+/// string buffer.
+fn native_open_output_string(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [] => Ok(SrsValue::Port(Rc::new(RefCell::new(
+            PortData::output_string(),
+        )))),
+        _ => Err("too many arguments to open-output-string".to_string()),
+    }
+}
+
+/// `(get-output-string port)`: returns the contents accumulated in an
+/// output-string port as a new Scheme string.
+fn native_get_output_string(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [SrsValue::Port(port)] => {
+            let contents = port.borrow().get_output_string()?;
+            Ok(SrsValue::String(Rc::new(RefCell::new(contents))))
+        }
+        [] => Err("not enough arguments to get-output-string".to_string()),
+        _ => Err("wrong type: expected output-string port".to_string()),
+    }
+}
+
+/// `(write-char char [port])`: writes `char` to the output port. Uses the
+/// current output port when no port is provided.
+fn native_write_char(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [SrsValue::Character(c)] => {
+            use std::io::Write;
+            print!("{}", c);
+            std::io::stdout()
+                .flush()
+                .map_err(|e| format!("write-char: {}", e))?;
+            Ok(SrsValue::Unspecified)
+        }
+        [SrsValue::Character(c), SrsValue::Port(port)] => {
+            port.borrow_mut().write_char(*c)?;
+            Ok(SrsValue::Unspecified)
+        }
+        [] | [_] => Err("not enough arguments to write-char".to_string()),
+        [_, _] => Err("wrong type: expected character and output port".to_string()),
+        _ => Err("too many arguments to write-char".to_string()),
+    }
 }
