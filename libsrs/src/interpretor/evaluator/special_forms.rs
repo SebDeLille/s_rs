@@ -293,6 +293,10 @@ fn eval_quasiquote(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalErr
 /// expressions from it, and evaluates them in sequence in the current
 /// environment `env`. Returns the value of the last expression, or
 /// [`SrsValue::Unspecified`] if the file is empty.
+///
+/// If `<filename>` contains a `/` or already ends with `.scm`, it is used as
+/// a literal path. Otherwise it is treated as a bare library name and
+/// resolved to `~/.config/srs/libs/<name>.scm`.
 fn eval_load(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
     let path_expr = match args {
         [path_expr] => path_expr,
@@ -306,8 +310,14 @@ fn eval_load(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
         _ => return err(EvalErrorKind::WrongType),
     };
 
-    let source = std::fs::read_to_string(&path).map_err(|e| EvalError {
-        kind: EvalErrorKind::Native(format!("load: could not read {}: {}", path, e)),
+    let resolved = resolve_load_path(&path);
+
+    let source = std::fs::read_to_string(&resolved).map_err(|e| EvalError {
+        kind: EvalErrorKind::Native(format!(
+            "load: could not read {}: {}",
+            resolved.display(),
+            e
+        )),
     })?;
 
     let lexemes =
@@ -323,6 +333,29 @@ fn eval_load(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
         result = eval(expr, env)?;
     }
     Ok(result)
+}
+
+/// Resolves a `load` argument into an actual filesystem path.
+///
+/// Literal paths (`/path/file.scm`, `./file.scm`, `foo/bar.scm`) are returned
+/// unchanged. Bare library names (`csv`) are mapped to
+/// `~/.config/srs/libs/<name>.scm`.
+fn resolve_load_path(path: &str) -> std::path::PathBuf {
+    resolve_load_path_with_home(path, std::env::var("HOME").ok().as_deref())
+}
+
+pub(crate) fn resolve_load_path_with_home(path: &str, home: Option<&str>) -> std::path::PathBuf {
+    if path.contains('/') || path.ends_with(".scm") {
+        std::path::PathBuf::from(path)
+    } else if let Some(home) = home {
+        std::path::PathBuf::from(home)
+            .join(".config")
+            .join("srs")
+            .join("libs")
+            .join(format!("{}.scm", path))
+    } else {
+        std::path::PathBuf::from(path)
+    }
 }
 
 /// Recursively expands a quasiquoted template at the given nesting `depth`.

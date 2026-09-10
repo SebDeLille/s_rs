@@ -18,7 +18,7 @@ Dispatch dans `interpretor/evaluator/special_forms.rs::eval_combination`.
 | `if` | ✅ | |
 | `quote` | ✅ | |
 | `quasiquote` | ✅ | `unquote`, `unquote-splicing`, imbrication |
-| `load` | ⚠️ extension | chargement de fichier, non standard R5RS |
+| `load` | ⚠️ extension | chargement de fichier, non standard R5RS. Les chemins contenant un `/` ou se terminant par `.scm` sont utilisés tels quels ; un nom nu (ex: `(load "csv")`) est cherché dans `~/.config/srs/libs/<nom>.scm` |
 
 ### Non implémentées
 
