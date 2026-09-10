@@ -71,6 +71,14 @@ Absents : `pair?`, `list?`, `list`, `set-car!`, `set-cdr!`, `append`,
 
 Absents : `vector-map`, `vector-for-each`, `vector-copy`.
 
+### Chaînes (`natives/strings.rs`)
+
+`string?` `string-length` `string-ref` `string=?` `substring` `string-append`
+`list->string`
+
+Absents : `string-set!`, `string->list`, `string-ci=?` et comparaisons
+insensibles à la casse, `make-string`, `string-copy`, `string-fill!`.
+
 ### Entrées/sorties (`natives/io.rs`)
 
 `display` `newline` `write-char` `write-string` `read-char` `peek-char`
@@ -82,8 +90,8 @@ Absents : `write`, `read`, `open-input-file`/`open-output-file`, etc.
 
 ### Totalement absent
 
-- Strings : `string?`, `string-length`, `string-ref`, `string-set!`,
-  `substring`, `string-append`, `string->list`, `list->string`, `string=?`, ...
+- Strings : `string-set!`, `string->list`, `string-ci=?` et apparentes,
+  `make-string`, `string-copy`, `string-fill!`
 - Chars : `char?`, `char->integer`, `integer->char`, `char-alphabetic?`, ...
 - Symboles : `symbol?`, `symbol->string`, `string->symbol`
 - Booléens : `boolean?`
@@ -131,6 +139,8 @@ Pas de nombres complexes.
 - `procedure_tests.rs` : `lambda`, application, `let`, `let*`
 - `vector_tests.rs` : `vector`, `vector?`, `make-vector`, `vector-length`,
   `vector-ref`, `vector-set!`, `vector->list`, `list->vector`, `vector-fill!`
+- `string_tests.rs` : `string?`, `string-length`, `string-ref`, `string=?`,
+  `substring`, `string-append`, `list->string`
 - `io_tests.rs` : `display`, `newline`, `write-char`, `write-string`, ports
   de chaînes (`open-input-string`, `open-output-string`, `get-output-string`),
   `read-char`, `peek-char`, `read-line`, `char-ready?`, `eof-object`,

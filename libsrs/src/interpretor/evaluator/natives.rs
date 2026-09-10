@@ -6,6 +6,7 @@ use crate::types::core::{Env, PortData, SrsValue};
 mod arithmetic;
 mod io;
 mod pairs;
+mod strings;
 mod trig;
 mod vectors;
 
@@ -27,6 +28,7 @@ pub fn global_env() -> Rc<Env> {
     trig::install(&env);
     pairs::install(&env);
     vectors::install(&env);
+    strings::install(&env);
     io::install(&env, stdin_port, stdout_port);
     env
 }
