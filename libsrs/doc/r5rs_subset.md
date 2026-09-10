@@ -83,10 +83,10 @@ insensibles à la casse, `make-string`, `string-copy`, `string-fill!`.
 
 `display` `newline` `write-char` `write-string` `read-char` `peek-char`
 `read-line` `char-ready?` `eof-object` `eof-object?` `current-input-port`
-`current-output-port` `open-input-string` `open-output-string`
+`current-output-port` `open-input-string` `open-input-file` `open-output-string`
 `get-output-string`
 
-Absents : `write`, `read`, `open-input-file`/`open-output-file`, etc.
+Absents : `write`, `read`, `open-output-file`, etc.
 
 ### Totalement absent
 

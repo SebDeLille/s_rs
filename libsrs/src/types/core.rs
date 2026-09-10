@@ -242,6 +242,16 @@ impl PortData {
         PortData::OutputString(String::new())
     }
 
+    /// Builds an input port reading from `path`, or returns an I/O error.
+    pub fn input_file<P: AsRef<std::path::Path>>(path: P) -> Result<Self, String> {
+        use std::fs::File;
+        let file = File::open(path).map_err(|e| format!("open-input-file: {}", e))?;
+        Ok(PortData::InputFile {
+            reader: BufReader::new(Box::new(file)),
+            peeked: None,
+        })
+    }
+
     /// Builds an input port from a byte slice, for unit tests.
     #[cfg(test)]
     pub fn test_input(data: &'static [u8]) -> Self {
@@ -252,15 +262,30 @@ impl PortData {
         }
     }
 
+/// Shared logic for reading/peeking one character from an
+    /// [`InputStdin`][PortData::InputStdin] or
+    /// [`InputFile`][PortData::InputFile] port.
+    fn take_or_read_peeked(
+        reader: &mut BufReader<Box<dyn Read>>,
+        peeked: &mut Option<char>,
+        take: bool,
+    ) -> Result<Option<char>, String> {
+        if let Some(c) = peeked.take() {
+            if !take {
+                *peeked = Some(c);
+            }
+            return Ok(Some(c));
+        }
+        read_char_from_reader(reader)
+    }
+
     /// Reads and consumes one character from the input port, returning
     /// [`SrsValue::Eof`] at end of file.
     pub fn read_char(&mut self) -> Result<SrsValue, String> {
         match self {
-            PortData::InputStdin { reader, peeked } => {
-                if let Some(c) = peeked.take() {
-                    return Ok(SrsValue::Character(c));
-                }
-                read_char_from_reader(reader)
+            PortData::InputStdin { reader, peeked }
+            | PortData::InputFile { reader, peeked } => {
+                Self::take_or_read_peeked(reader, peeked, true)
                     .map(|opt| opt.map(SrsValue::Character).unwrap_or(SrsValue::Eof))
             }
             PortData::InputString(chars, pos) => {
@@ -281,13 +306,11 @@ impl PortData {
     /// returning [`SrsValue::Eof`] at end of file.
     pub fn peek_char(&mut self) -> Result<SrsValue, String> {
         match self {
-            PortData::InputStdin { reader, peeked } => {
-                if let Some(c) = *peeked {
-                    return Ok(SrsValue::Character(c));
-                }
-                let c = read_char_from_reader(reader)?;
-                if let Some(ch) = c {
-                    *peeked = Some(ch);
+            PortData::InputStdin { reader, peeked }
+            | PortData::InputFile { reader, peeked } => {
+                let c = Self::take_or_read_peeked(reader, peeked, false)?;
+                if peeked.is_none() {
+                    *peeked = c;
                 }
                 Ok(c.map(SrsValue::Character).unwrap_or(SrsValue::Eof))
             }
@@ -308,7 +331,7 @@ impl PortData {
     pub fn is_input_port(&self) -> bool {
         matches!(
             self,
-            PortData::InputStdin { .. } | PortData::InputString(..)
+            PortData::InputStdin { .. } | PortData::InputFile { .. } | PortData::InputString(..)
         )
     }
 
@@ -322,14 +345,11 @@ impl PortData {
     /// yields EOF, returns [`SrsValue::Eof`].
     pub fn read_line(&mut self) -> Result<SrsValue, String> {
         match self {
-            PortData::InputStdin { reader, peeked } => {
+            PortData::InputStdin { reader, peeked }
+            | PortData::InputFile { reader, peeked } => {
                 let mut buf = String::new();
                 loop {
-                    let c = if let Some(c) = peeked.take() {
-                        Ok(Some(c))
-                    } else {
-                        read_char_from_reader(reader)
-                    };
+                    let c = Self::take_or_read_peeked(reader, peeked, true);
                     match c? {
                         Some('\n') => return Ok(SrsValue::String(Rc::new(RefCell::new(buf)))),
                         Some(ch) => buf.push(ch),
@@ -484,6 +504,11 @@ pub enum PortData {
         reader: BufReader<Box<dyn Read>>,
         peeked: Option<char>,
     },
+    /// File input backed by an opaque reader.
+    InputFile {
+        reader: BufReader<Box<dyn Read>>,
+        peeked: Option<char>,
+    },
     /// Standard output.
     OutputStdout,
     /// Input port reading characters from a string using a byte index.
@@ -497,6 +522,10 @@ impl fmt::Debug for PortData {
         match self {
             PortData::InputStdin { peeked, .. } => f
                 .debug_struct("InputStdin")
+                .field("peeked", peeked)
+                .finish(),
+            PortData::InputFile { peeked, .. } => f
+                .debug_struct("InputFile")
                 .field("peeked", peeked)
                 .finish(),
             PortData::OutputStdout => write!(f, "OutputStdout"),
