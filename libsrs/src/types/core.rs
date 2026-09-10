@@ -232,6 +232,16 @@ impl PortData {
         PortData::OutputStdout
     }
 
+    /// Builds an input port from a string.
+    pub fn input_string(s: impl Into<String>) -> Self {
+        PortData::InputString(s.into().chars().collect::<Vec<_>>(), 0)
+    }
+
+    /// Builds an output port accumulating into a string.
+    pub fn output_string() -> Self {
+        PortData::OutputString(String::new())
+    }
+
     /// Builds an input port from a byte slice, for unit tests.
     #[cfg(test)]
     pub fn test_input(data: &'static [u8]) -> Self {
@@ -253,7 +263,17 @@ impl PortData {
                 read_char_from_reader(reader)
                     .map(|opt| opt.map(SrsValue::Character).unwrap_or(SrsValue::Eof))
             }
-            PortData::OutputStdout => Err("read-char: not an input port".to_string()),
+            PortData::InputString(chars, pos) => {
+                if let Some(&c) = chars.get(*pos) {
+                    *pos += 1;
+                    Ok(SrsValue::Character(c))
+                } else {
+                    Ok(SrsValue::Eof)
+                }
+            }
+            PortData::OutputStdout | PortData::OutputString(_) => {
+                Err("read-char: not an input port".to_string())
+            }
         }
     }
 
@@ -271,13 +291,30 @@ impl PortData {
                 }
                 Ok(c.map(SrsValue::Character).unwrap_or(SrsValue::Eof))
             }
-            PortData::OutputStdout => Err("peek-char: not an input port".to_string()),
+            PortData::InputString(chars, pos) => {
+                if let Some(&c) = chars.get(*pos) {
+                    Ok(SrsValue::Character(c))
+                } else {
+                    Ok(SrsValue::Eof)
+                }
+            }
+            PortData::OutputStdout | PortData::OutputString(_) => {
+                Err("peek-char: not an input port".to_string())
+            }
         }
     }
 
     /// Returns `true` if this port can be used for input.
     pub fn is_input_port(&self) -> bool {
-        matches!(self, PortData::InputStdin { .. })
+        matches!(
+            self,
+            PortData::InputStdin { .. } | PortData::InputString(..)
+        )
+    }
+
+    /// Returns `true` if this port can be used for output.
+    pub fn is_output_port(&self) -> bool {
+        matches!(self, PortData::OutputStdout | PortData::OutputString(_))
     }
 
     /// Reads characters from the input port until a newline (excluded) or
@@ -305,7 +342,50 @@ impl PortData {
                     }
                 }
             }
-            PortData::OutputStdout => Err("read-line: not an input port".to_string()),
+            PortData::InputString(chars, pos) => {
+                let mut buf = String::new();
+                while let Some(&c) = chars.get(*pos) {
+                    *pos += 1;
+                    if c == '\n' {
+                        return Ok(SrsValue::String(Rc::new(RefCell::new(buf))));
+                    }
+                    buf.push(c);
+                }
+                if buf.is_empty() {
+                    Ok(SrsValue::Eof)
+                } else {
+                    Ok(SrsValue::String(Rc::new(RefCell::new(buf))))
+                }
+            }
+            PortData::OutputStdout | PortData::OutputString(_) => {
+                Err("read-line: not an input port".to_string())
+            }
+        }
+    }
+
+    /// Writes a character to the output port.
+    pub fn write_char(&mut self, c: char) -> Result<(), String> {
+        match self {
+            PortData::OutputString(buf) => {
+                buf.push(c);
+                Ok(())
+            }
+            PortData::OutputStdout => {
+                use std::io::Write;
+                print!("{}", c);
+                std::io::stdout()
+                    .flush()
+                    .map_err(|e| format!("write-char: {}", e))
+            }
+            _ => Err("write-char: not an output port".to_string()),
+        }
+    }
+
+    /// Returns the contents accumulated in an output-string port.
+    pub fn get_output_string(&self) -> Result<String, String> {
+        match self {
+            PortData::OutputString(buf) => Ok(buf.clone()),
+            _ => Err("get-output-string: not an output-string port".to_string()),
         }
     }
 }
@@ -369,11 +449,17 @@ pub enum PromiseState {
 
 /// Runtime data behind an [`SrsValue::Port`].
 pub enum PortData {
+    /// Standard input backed by an opaque reader.
     InputStdin {
         reader: BufReader<Box<dyn Read>>,
         peeked: Option<char>,
     },
+    /// Standard output.
     OutputStdout,
+    /// Input port reading characters from a string using a byte index.
+    InputString(Vec<char>, usize),
+    /// Output port accumulating characters into a string.
+    OutputString(String),
 }
 
 impl fmt::Debug for PortData {
@@ -384,6 +470,12 @@ impl fmt::Debug for PortData {
                 .field("peeked", peeked)
                 .finish(),
             PortData::OutputStdout => write!(f, "OutputStdout"),
+            PortData::InputString(chars, pos) => f
+                .debug_tuple("InputString")
+                .field(&chars.iter().collect::<String>())
+                .field(pos)
+                .finish(),
+            PortData::OutputString(buf) => f.debug_tuple("OutputString").field(buf).finish(),
         }
     }
 }
@@ -496,5 +588,59 @@ mod tests {
     fn output_port_read_line_errors() {
         let mut port = PortData::stdout();
         assert!(port.read_line().is_err());
+    }
+
+    #[test]
+    fn input_string_port_reads_chars_and_eof() {
+        let mut port = PortData::input_string("ab");
+        assert!(matches!(
+            port.read_char().unwrap(),
+            SrsValue::Character('a')
+        ));
+        assert!(matches!(
+            port.peek_char().unwrap(),
+            SrsValue::Character('b')
+        ));
+        assert!(matches!(
+            port.peek_char().unwrap(),
+            SrsValue::Character('b')
+        ));
+        assert!(matches!(
+            port.read_char().unwrap(),
+            SrsValue::Character('b')
+        ));
+        assert!(matches!(port.read_char().unwrap(), SrsValue::Eof));
+    }
+
+    #[test]
+    fn input_string_port_read_line_with_newlines() {
+        let mut port = PortData::input_string("abc\ndef");
+        let first = port.read_line().unwrap();
+        assert!(matches!(first, SrsValue::String(s) if s.borrow().as_str() == "abc"));
+        let second = port.read_line().unwrap();
+        assert!(matches!(second, SrsValue::String(s) if s.borrow().as_str() == "def"));
+        assert!(matches!(port.read_line().unwrap(), SrsValue::Eof));
+    }
+
+    #[test]
+    fn input_string_port_read_line_eof_on_empty() {
+        let mut port = PortData::input_string("");
+        assert!(matches!(port.read_line().unwrap(), SrsValue::Eof));
+    }
+
+    #[test]
+    fn output_string_port_accumulates_chars() {
+        let mut port = PortData::output_string();
+        port.write_char('x').unwrap();
+        port.write_char('y').unwrap();
+        assert_eq!(port.get_output_string().unwrap(), "xy");
+    }
+
+    #[test]
+    fn get_output_string_rejects_non_output_string_port() {
+        let port = PortData::stdout();
+        assert!(port.get_output_string().is_err());
+        let port = PortData::input_string("x");
+        assert!(port.get_output_string().is_err());
     }
 }
