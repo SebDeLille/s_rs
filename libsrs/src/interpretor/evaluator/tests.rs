@@ -8,8 +8,8 @@ fn eval_src(src: &str) -> Result<SrsValue, EvalError> {
     let mut result = Ok(SrsValue::Unspecified);
     for value in &values {
         result = eval(value, &env);
-        if result.is_err() {
-            return result;
+        if let Err(ref err) = result {
+            return Err(err.clone());
         }
     }
     result

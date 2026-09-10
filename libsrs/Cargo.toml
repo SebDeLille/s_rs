@@ -22,3 +22,7 @@ path = "tests/r5rs/pair_tests.rs"
 [[test]]
 name = "r5rs_vector"
 path = "tests/r5rs/vector_tests.rs"
+
+[[test]]
+name = "r5rs_io"
+path = "tests/r5rs/io_tests.rs"
