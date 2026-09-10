@@ -275,3 +275,75 @@ fn char_ready_on_string_port_reflects_remaining_data() {
         "(let ((p (open-input-string \"\"))) (char-ready? p))"
     )));
 }
+
+#[test]
+fn display_writes_to_output_string_port() {
+    let result =
+        eval_src("(let ((p (open-output-string))) (display \"hi\" p) (get-output-string p))");
+    assert_eq!(string_value(result), "hi");
+}
+
+#[test]
+fn display_rejects_input_port() {
+    assert!(eval_all("(display \"x\" (open-input-string \"x\"))").is_err());
+}
+
+#[test]
+fn display_accepts_current_output_port() {
+    assert!(eval_all("(display \"x\" (current-output-port))").is_ok());
+}
+
+#[test]
+fn newline_writes_to_output_string_port() {
+    let result = eval_src("(let ((p (open-output-string))) (newline p) (get-output-string p))");
+    assert_eq!(string_value(result), "\n");
+}
+
+#[test]
+fn newline_rejects_input_port() {
+    assert!(eval_all("(newline (open-input-string \"x\"))").is_err());
+}
+
+#[test]
+fn write_char_uses_current_output_port_by_default() {
+    assert!(eval_all("(write-char #\\a)").is_ok());
+}
+
+#[test]
+fn write_char_writes_to_output_string_port() {
+    let result =
+        eval_src("(let ((p (open-output-string))) (write-char #\\a p) (get-output-string p))");
+    assert_eq!(string_value(result), "a");
+}
+
+#[test]
+fn write_string_writes_to_output_string_port() {
+    let result = eval_src(
+        "(let ((p (open-output-string))) (write-string \"hello\" p) (get-output-string p))",
+    );
+    assert_eq!(string_value(result), "hello");
+}
+
+#[test]
+fn write_string_supports_start_end_bounds() {
+    let result = eval_src(
+        "(let ((p (open-output-string))) (write-string \"hello\" p 1 4) (get-output-string p))",
+    );
+    assert_eq!(string_value(result), "ell");
+}
+
+#[test]
+fn write_string_rejects_input_port() {
+    assert!(eval_all("(write-string \"x\" (open-input-string \"x\"))").is_err());
+}
+
+#[test]
+fn write_string_requires_string() {
+    assert!(eval_all("(write-string 42)").is_err());
+    assert!(eval_all("(write-string)").is_err());
+}
+
+#[test]
+fn write_string_with_too_many_args_fails() {
+    assert!(eval_all("(let ((p (open-output-string))) (write-string \"a\" p 0 1 2))").is_err());
+}
