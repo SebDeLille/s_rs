@@ -1,6 +1,7 @@
+use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::types::core::{Env, SrsValue};
+use crate::types::core::{Env, PortData, SrsValue};
 
 mod arithmetic;
 mod io;
@@ -12,11 +13,21 @@ mod vectors;
 /// (`+`, `-`, `*`, `/`) already bound.
 pub fn global_env() -> Rc<Env> {
     let env = Env::new(None);
+    let stdin_port = Rc::new(RefCell::new(PortData::stdin()));
+    let stdout_port = Rc::new(RefCell::new(PortData::stdout()));
+    env.define(
+        "*current-input-port*".to_string(),
+        SrsValue::Port(stdin_port.clone()),
+    );
+    env.define(
+        "*current-output-port*".to_string(),
+        SrsValue::Port(stdout_port.clone()),
+    );
     arithmetic::install(&env);
     trig::install(&env);
     pairs::install(&env);
     vectors::install(&env);
-    io::install(&env);
+    io::install(&env, stdin_port, stdout_port);
     env
 }
 

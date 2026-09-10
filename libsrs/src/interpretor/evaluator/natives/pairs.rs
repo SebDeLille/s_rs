@@ -56,6 +56,13 @@ pub(super) fn install(env: &Rc<Env>) {
             func: Rc::new(native_is_null),
         }),
     );
+    env.define(
+        "eq?".to_string(),
+        SrsValue::Native(Native {
+            name: "eq?",
+            func: Rc::new(native_eq_p),
+        }),
+    );
 }
 
 /// `(cons car cdr)`: allocates a fresh mutable pair.
@@ -149,5 +156,40 @@ fn native_is_null(args: &[SrsValue]) -> Result<SrsValue, String> {
         [obj] => Ok(SrsValue::Boolean(matches!(obj, SrsValue::Nil))),
         [] => Err("not enough arguments to null?".to_string()),
         _ => Err("too many arguments to null?".to_string()),
+    }
+}
+
+/// `(eq? obj1 obj2)`: returns `#t` if `obj1` and `obj2` are the same
+/// object (R5RS section 6.1). For mutable/Rc-wrapped values this uses
+/// pointer identity; atomic values are compared by value.
+fn native_eq_p(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [a, b] => Ok(SrsValue::Boolean(srs_value_eq(a, b))),
+        [] | [_] => Err("not enough arguments to eq?".to_string()),
+        _ => Err("too many arguments to eq?".to_string()),
+    }
+}
+
+fn srs_value_eq(a: &SrsValue, b: &SrsValue) -> bool {
+    match (a, b) {
+        (SrsValue::Integer(x), SrsValue::Integer(y)) => x == y,
+        (SrsValue::Float(x), SrsValue::Float(y)) => x == y,
+        (SrsValue::Rational(n1, d1), SrsValue::Rational(n2, d2)) => n1 == n2 && d1 == d2,
+        (SrsValue::Boolean(x), SrsValue::Boolean(y)) => x == y,
+        (SrsValue::Character(x), SrsValue::Character(y)) => x == y,
+        (SrsValue::Symbol(x), SrsValue::Symbol(y)) => x == y,
+        (SrsValue::Nil, SrsValue::Nil) => true,
+        (SrsValue::Unspecified, SrsValue::Unspecified) => true,
+        (SrsValue::Eof, SrsValue::Eof) => true,
+        (SrsValue::String(s1), SrsValue::String(s2)) => Rc::ptr_eq(s1, s2),
+        (SrsValue::Pair(p1), SrsValue::Pair(p2)) => Rc::ptr_eq(p1, p2),
+        (SrsValue::Vector(v1), SrsValue::Vector(v2)) => Rc::ptr_eq(v1, v2),
+        (SrsValue::Procedure(l1), SrsValue::Procedure(l2)) => Rc::ptr_eq(l1, l2),
+        (SrsValue::Promise(p1), SrsValue::Promise(p2)) => Rc::ptr_eq(p1, p2),
+        (SrsValue::Port(p1), SrsValue::Port(p2)) => Rc::ptr_eq(p1, p2),
+        (SrsValue::Native(n1), SrsValue::Native(n2)) => {
+            n1.name == n2.name && Rc::ptr_eq(&n1.func, &n2.func)
+        }
+        _ => false,
     }
 }

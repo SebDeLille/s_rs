@@ -33,3 +33,51 @@ fn eof_object_p_returns_false_for_non_eof_values() {
         SrsValue::Boolean(false)
     ));
 }
+
+#[test]
+fn current_input_port_returns_port_value() {
+    assert!(matches!(
+        eval_src("(current-input-port)"),
+        SrsValue::Port(_)
+    ));
+}
+
+#[test]
+fn current_output_port_returns_port_value() {
+    assert!(matches!(
+        eval_src("(current-output-port)"),
+        SrsValue::Port(_)
+    ));
+}
+
+#[test]
+fn current_input_port_is_singleton() {
+    assert!(matches!(
+        eval_src("(eq? (current-input-port) (current-input-port))"),
+        SrsValue::Boolean(true)
+    ));
+}
+
+#[test]
+fn current_output_port_is_singleton() {
+    assert!(matches!(
+        eval_src("(eq? (current-output-port) (current-output-port))"),
+        SrsValue::Boolean(true)
+    ));
+}
+
+#[test]
+fn current_input_port_binds_internal_variable() {
+    assert!(matches!(
+        eval_src("(eq? (current-input-port) *current-input-port*)"),
+        SrsValue::Boolean(true)
+    ));
+}
+
+#[test]
+fn current_output_port_binds_internal_variable() {
+    assert!(matches!(
+        eval_src("(eq? (current-output-port) *current-output-port*)"),
+        SrsValue::Boolean(true)
+    ));
+}
