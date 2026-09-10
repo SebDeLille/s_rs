@@ -1,8 +1,13 @@
+use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::types::core::{Env, Native, SrsValue};
+use crate::types::core::{Env, Native, PortData, SrsValue};
 
-pub(super) fn install(env: &Rc<Env>) {
+pub(super) fn install(
+    env: &Rc<Env>,
+    stdin_port: Rc<RefCell<PortData>>,
+    stdout_port: Rc<RefCell<PortData>>,
+) {
     env.define(
         "display".to_string(),
         SrsValue::Native(Native {
@@ -29,6 +34,20 @@ pub(super) fn install(env: &Rc<Env>) {
         SrsValue::Native(Native {
             name: "eof-object?",
             func: Rc::new(native_eof_object_p),
+        }),
+    );
+    env.define(
+        "current-input-port".to_string(),
+        SrsValue::Native(Native {
+            name: "current-input-port",
+            func: Rc::new(move |args| native_current_input_port(args, &stdin_port)),
+        }),
+    );
+    env.define(
+        "current-output-port".to_string(),
+        SrsValue::Native(Native {
+            name: "current-output-port",
+            func: Rc::new(move |args| native_current_output_port(args, &stdout_port)),
         }),
     );
 }
@@ -83,5 +102,27 @@ fn native_eof_object_p(args: &[SrsValue]) -> Result<SrsValue, String> {
         [value] => Ok(SrsValue::Boolean(matches!(value, SrsValue::Eof))),
         [] => Err("not enough arguments to eof-object?".to_string()),
         _ => Err("too many arguments to eof-object?".to_string()),
+    }
+}
+
+/// `(current-input-port)`: returns the singleton standard input port.
+fn native_current_input_port(
+    args: &[SrsValue],
+    stdin_port: &Rc<RefCell<PortData>>,
+) -> Result<SrsValue, String> {
+    match args {
+        [] => Ok(SrsValue::Port(stdin_port.clone())),
+        _ => Err("too many arguments to current-input-port".to_string()),
+    }
+}
+
+/// `(current-output-port)`: returns the singleton standard output port.
+fn native_current_output_port(
+    args: &[SrsValue],
+    stdout_port: &Rc<RefCell<PortData>>,
+) -> Result<SrsValue, String> {
+    match args {
+        [] => Ok(SrsValue::Port(stdout_port.clone())),
+        _ => Err("too many arguments to current-output-port".to_string()),
     }
 }
