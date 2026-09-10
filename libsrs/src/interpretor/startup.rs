@@ -1,18 +1,22 @@
 //! Loading of user-provided Scheme startup scripts.
 //!
 //! On launch, front-ends (the `srs` CLI, `srsgtk`, ...) can call
-//! [`load_startup_scripts`] to evaluate every `*.scm` file found in:
+//! [`load_startup_scripts`] to evaluate every `*.scm` file found under
+//! the `startup/` subdirectory of:
 //!
-//! 1. `$HOME/.config/srs/` (global scripts, shared across launch
+//! 1. `$HOME/.config/srs/startup/` (global scripts, shared across launch
 //!    directories), in alphabetical order;
-//! 2. `.srs/` under the current working directory (the directory the
-//!    binary was launched from), in alphabetical order.
+//! 2. `.srs/startup/` under the current working directory (the directory
+//!    the binary was launched from), in alphabetical order.
 //!
-//! This lets users extend the interpreter with new bindings (procedures,
-//! macros via `define`, ...) without recompiling. A missing directory is
-//! silently skipped. A script that fails to load (I/O error, syntax
-//! error, or evaluation error) reports its error on stderr and does not
-//! prevent the remaining scripts from being loaded.
+//! The sibling `libs/` directory, e.g. `$HOME/.config/srs/libs/`, is
+//! reserved for libraries loaded on demand via `(load ...)` and is not
+//! scanned automatically. This lets users extend the interpreter with
+//! new bindings (procedures, macros via `define`, ...) without
+//! recompiling. A missing directory is silently skipped. A script that
+//! fails to load (I/O error, syntax error, or evaluation error) reports
+//! its error on stderr and does not prevent the remaining scripts from
+//! being loaded.
 
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -21,8 +25,9 @@ use crate::interpretor::repl::{EvalOutcome, eval_source};
 use crate::types::core::Env;
 
 /// Evaluates every `*.scm` startup script found in the global config
-/// directory (`$HOME/.config/srs`) and then in the current working
-/// directory, in that order, binding new definitions into `env`.
+/// directory (`$HOME/.config/srs/startup`) and then in the current
+/// working directory (`.srs/startup`), in that order, binding new
+/// definitions into `env`.
 ///
 /// Errors are reported on stderr and do not stop the loading of the
 /// remaining scripts.
@@ -37,20 +42,26 @@ pub fn load_startup_scripts(env: &Rc<Env>) {
 }
 
 /// Directories scanned for startup scripts, in load order: the global
-/// config directory first, then `.srs` under the current working
-/// directory. Either (or both) may be absent if `$HOME` is unset or the
-/// cwd cannot be determined, in which case they are simply omitted.
+/// config directory first (`$HOME/.config/srs/startup`), then `.srs/startup`
+/// under the current working directory. Either (or both) may be absent if
+/// `$HOME` is unset or the cwd cannot be determined, in which case they are
+/// simply omitted.
 fn startup_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::with_capacity(2);
 
     if let Ok(home) = std::env::var("HOME")
         && !home.is_empty()
     {
-        dirs.push(PathBuf::from(home).join(".config").join("srs"));
+        dirs.push(
+            PathBuf::from(home)
+                .join(".config")
+                .join("srs")
+                .join("startup"),
+        );
     }
 
     if let Ok(cwd) = std::env::current_dir() {
-        dirs.push(cwd.join(".srs"));
+        dirs.push(cwd.join(".srs").join("startup"));
     }
 
     dirs
@@ -95,6 +106,38 @@ mod tests {
 
     fn write_script(dir: &Path, name: &str, content: &str) {
         std::fs::write(dir.join(name), content).unwrap();
+    }
+
+    #[test]
+    fn startup_dirs_point_to_startup_subdirectories() {
+        let dirs = startup_dirs();
+        assert_eq!(dirs.len(), 2);
+        assert!(
+            dirs[0].ends_with(".config/srs/startup"),
+            "global dir: {:?}",
+            dirs[0]
+        );
+        assert!(
+            dirs[1].ends_with(".srs/startup"),
+            "local dir: {:?}",
+            dirs[1]
+        );
+    }
+
+    #[test]
+    fn startup_dirs_omits_global_when_home_is_unset() {
+        let original = std::env::var_os("HOME");
+        unsafe {
+            std::env::remove_var("HOME");
+        }
+        let dirs = startup_dirs();
+        assert_eq!(dirs.len(), 1);
+        assert!(dirs[0].ends_with(".srs/startup"));
+        if let Some(home) = original {
+            unsafe {
+                std::env::set_var("HOME", home);
+            }
+        }
     }
 
     #[test]
