@@ -658,6 +658,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn integer_and_float() {
         assert_eq!(
             get_lexemes("42 3.14 1e10 -3.2e-5").unwrap(),
