@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use libsrs::interpretor::evaluator::{eval, global_env};
 use libsrs::interpretor::lexical_analyzer::get_lexemes;
 use libsrs::interpretor::reader::read_all;
@@ -36,6 +38,20 @@ fn boolean_value(value: SrsValue) -> bool {
 
 fn eval_src(scm: &str) -> SrsValue {
     eval_all(scm).unwrap()
+}
+
+static TMP_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+fn make_temp_file(contents: &str) -> String {
+    let dir = std::env::temp_dir();
+    let n = TMP_COUNTER.fetch_add(1, Ordering::SeqCst);
+    let path = dir.join(format!("s_rs_io_test_{}.txt", n));
+    std::fs::write(&path, contents).unwrap();
+    path.to_str().unwrap().to_string()
+}
+
+fn escape_path(path: &str) -> String {
+    path.replace('\\', "\\\\")
 }
 
 #[test]
@@ -227,6 +243,63 @@ fn read_line_on_string_port_returns_string_or_eof() {
 #[test]
 fn open_input_string_creates_input_port() {
     assert!(eval_all("(open-input-string \"hello\")").is_ok());
+}
+
+#[test]
+fn open_input_file_creates_input_port_from_real_file() {
+    let path = make_temp_file("line1\nline2\n");
+    let scm = format!("(open-input-file \"{}\")", escape_path(&path));
+    assert!(eval_all(&scm).is_ok());
+}
+
+#[test]
+fn open_input_file_reads_lines_and_chars() {
+    let path = make_temp_file("abc\ndef");
+    let scm = format!(
+        "(let ((p (open-input-file \"{}\")))
+            (read-line p)
+            (peek-char p)
+            (read-char p)
+            (read-line p))",
+        escape_path(&path)
+    );
+    assert_eq!(string_value(eval_src(&scm)), "ef");
+}
+
+#[test]
+fn open_input_file_peek_char_works() {
+    let path = make_temp_file("xy");
+    let scm = format!(
+        "(let ((p (open-input-file \"{}\")))
+            (peek-char p)
+            (read-char p))",
+        escape_path(&path)
+    );
+    assert_eq!(char_value(eval_src(&scm)), 'x');
+}
+
+#[test]
+fn open_input_file_returns_eof_after_last_line() {
+    let path = make_temp_file("only");
+    let scm = format!(
+        "(let ((p (open-input-file \"{}\")))
+            (read-line p)
+            (eof-object? (read-line p)))",
+        escape_path(&path)
+    );
+    assert!(boolean_value(eval_src(&scm)));
+}
+
+#[test]
+fn open_input_file_reports_missing_file() {
+    assert!(eval_all("(open-input-file \"/nonexistent/path/66.txt\")").is_err());
+}
+
+#[test]
+fn open_input_file_requires_string() {
+    assert!(eval_all("(open-input-file 42)").is_err());
+    assert!(eval_all("(open-input-file)").is_err());
+    assert!(eval_all("(open-input-file \"a\" \"b\")").is_err());
 }
 
 #[test]

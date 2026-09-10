@@ -98,6 +98,13 @@ pub(super) fn install(
         }),
     );
     env.define(
+        "open-input-file".to_string(),
+        SrsValue::Native(Native {
+            name: "open-input-file",
+            func: Rc::new(native_open_input_file),
+        }),
+    );
+    env.define(
         "open-output-string".to_string(),
         SrsValue::Native(Native {
             name: "open-output-string",
@@ -319,7 +326,7 @@ fn native_char_ready_p(
 ) -> Result<SrsValue, String> {
     let port = input_port_from_args("char-ready?", args, stdin_port)?;
     let ready = match &*port.borrow() {
-        PortData::InputStdin { .. } => true,
+        PortData::InputStdin { .. } | PortData::InputFile { .. } => true,
         PortData::InputString(chars, pos) => *pos < chars.len(),
         _ => false,
     };
@@ -336,6 +343,20 @@ fn native_open_input_string(args: &[SrsValue]) -> Result<SrsValue, String> {
         [] => Err("not enough arguments to open-input-string".to_string()),
         [_] => Err("wrong type: expected string".to_string()),
         _ => Err("too many arguments to open-input-string".to_string()),
+    }
+}
+
+/// `(open-input-file path)`: returns a new input port reading from file
+/// located at `path`.
+fn native_open_input_file(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [SrsValue::String(s)] => Ok(SrsValue::Port(Rc::new(RefCell::new(
+            PortData::input_file(&*s.borrow())?,
+        )))),
+        [SrsValue::Symbol(_)] => Err("open-input-file: expected string".to_string()),
+        [] => Err("not enough arguments to open-input-file".to_string()),
+        [_] => Err("wrong type: expected string".to_string()),
+        _ => Err("too many arguments to open-input-file".to_string()),
     }
 }
 
