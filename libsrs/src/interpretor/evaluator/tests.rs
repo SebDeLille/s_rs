@@ -541,6 +541,17 @@ fn newline_too_many_args_fails() {
 }
 
 #[test]
+fn write_string_requires_string() {
+    assert!(eval_src("(write-string 42)").is_err());
+    assert!(eval_src("(write-string)").is_err());
+}
+
+#[test]
+fn write_string_with_too_many_args_fails() {
+    assert!(eval_src("(let ((p (open-output-string))) (write-string \"a\" p 0 1 2))").is_err());
+}
+
+#[test]
 fn cons_creates_a_pair() {
     assert!(matches!(ok("(cons 1 2)"), SrsValue::Pair(_)));
 }

@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use super::index_from;
 use crate::types::core::{Env, Native, PortData, SrsValue};
 
 pub(super) fn install(
@@ -14,18 +15,23 @@ pub(super) fn install(
     let stdin_for_read_line = stdin_port.clone();
     let stdin_for_char_ready = stdin_port;
 
+    let stdout_for_display = stdout_port.clone();
+    let stdout_for_newline = stdout_port.clone();
+    let stdout_for_write_char = stdout_port.clone();
+    let stdout_for_write_string = stdout_port.clone();
+
     env.define(
         "display".to_string(),
         SrsValue::Native(Native {
             name: "display",
-            func: Rc::new(native_display),
+            func: Rc::new(move |args| native_display(args, &stdout_for_display)),
         }),
     );
     env.define(
         "newline".to_string(),
         SrsValue::Native(Native {
             name: "newline",
-            func: Rc::new(native_newline),
+            func: Rc::new(move |args| native_newline(args, &stdout_for_newline)),
         }),
     );
     env.define(
@@ -109,41 +115,87 @@ pub(super) fn install(
         "write-char".to_string(),
         SrsValue::Native(Native {
             name: "write-char",
-            func: Rc::new(native_write_char),
+            func: Rc::new(move |args| native_write_char(args, &stdout_for_write_char)),
+        }),
+    );
+    env.define(
+        "write-string".to_string(),
+        SrsValue::Native(Native {
+            name: "write-string",
+            func: Rc::new(move |args| native_write_string(args, &stdout_for_write_string)),
         }),
     );
 }
 
-/// `(display value)`: writes `value` to standard output using its
+/// `(display value [port])`: writes `value` to the output port using its
 /// human-readable representation (no quotes around strings, characters
-/// printed as themselves). Returns [`SrsValue::Unspecified`].
-fn native_display(args: &[SrsValue]) -> Result<SrsValue, String> {
-    match args {
-        [value] => {
+/// printed as themselves). Uses the current output port when `port` is
+/// omitted. Returns [`SrsValue::Unspecified`].
+fn native_display(
+    args: &[SrsValue],
+    stdout_port: &Rc<RefCell<PortData>>,
+) -> Result<SrsValue, String> {
+    let (value, port) = match args {
+        [value] => (value, stdout_port.clone()),
+        [value, SrsValue::Port(port)] => {
+            if !port.borrow().is_output_port() {
+                return Err("display: not an output port".to_string());
+            }
+            (value, port.clone())
+        }
+        [] => return Err("not enough arguments to display".to_string()),
+        [_, _] => return Err("wrong type: expected output port".to_string()),
+        _ => return Err("too many arguments to display".to_string()),
+    };
+    let repr = value.display_repr();
+    let mut port = port.borrow_mut();
+    match &mut *port {
+        PortData::OutputString(buf) => {
+            buf.push_str(&repr);
+            Ok(SrsValue::Unspecified)
+        }
+        PortData::OutputStdout => {
             use std::io::Write;
-            print!("{}", value.display_repr());
+            print!("{}", repr);
             std::io::stdout()
                 .flush()
                 .map_err(|e| format!("display: {}", e))?;
             Ok(SrsValue::Unspecified)
         }
-        [] => Err("not enough arguments to display".to_string()),
-        _ => Err("too many arguments to display".to_string()),
+        _ => Err("display: not an output port".to_string()),
     }
 }
 
-/// `(newline)`: writes a line break to standard output. Returns
+/// `(newline [port])`: writes a line break to the output port. Uses the
+/// current output port when `port` is omitted. Returns
 /// [`SrsValue::Unspecified`].
-fn native_newline(args: &[SrsValue]) -> Result<SrsValue, String> {
+fn native_newline(
+    args: &[SrsValue],
+    stdout_port: &Rc<RefCell<PortData>>,
+) -> Result<SrsValue, String> {
     match args {
         [] => {
-            use std::io::Write;
-            println!();
-            std::io::stdout()
-                .flush()
-                .map_err(|e| format!("newline: {}", e))?;
+            let mut port = stdout_port.borrow_mut();
+            port.write_char('\n').map_err(|e| {
+                if e.starts_with("write-char:") {
+                    e.replace("write-char:", "newline:")
+                } else {
+                    format!("newline: {}", e)
+                }
+            })?;
             Ok(SrsValue::Unspecified)
         }
+        [SrsValue::Port(port)] => {
+            port.borrow_mut().write_char('\n').map_err(|e| {
+                if e.starts_with("write-char:") {
+                    e.replace("write-char:", "newline:")
+                } else {
+                    format!("newline: {}", e)
+                }
+            })?;
+            Ok(SrsValue::Unspecified)
+        }
+        [_] => Err("wrong type: expected output port".to_string()),
         _ => Err("too many arguments to newline".to_string()),
     }
 }
@@ -313,22 +365,57 @@ fn native_get_output_string(args: &[SrsValue]) -> Result<SrsValue, String> {
 
 /// `(write-char char [port])`: writes `char` to the output port. Uses the
 /// current output port when no port is provided.
-fn native_write_char(args: &[SrsValue]) -> Result<SrsValue, String> {
+fn native_write_char(
+    args: &[SrsValue],
+    stdout_port: &Rc<RefCell<PortData>>,
+) -> Result<SrsValue, String> {
     match args {
-        [SrsValue::Character(c)] => {
-            use std::io::Write;
-            print!("{}", c);
-            std::io::stdout()
-                .flush()
-                .map_err(|e| format!("write-char: {}", e))?;
-            Ok(SrsValue::Unspecified)
-        }
-        [SrsValue::Character(c), SrsValue::Port(port)] => {
-            port.borrow_mut().write_char(*c)?;
-            Ok(SrsValue::Unspecified)
-        }
+        [SrsValue::Character(c)] => stdout_port
+            .borrow_mut()
+            .write_char(*c)
+            .map(|_| SrsValue::Unspecified),
+        [SrsValue::Character(c), SrsValue::Port(port)] => port
+            .borrow_mut()
+            .write_char(*c)
+            .map(|_| SrsValue::Unspecified),
         [] | [_] => Err("not enough arguments to write-char".to_string()),
         [_, _] => Err("wrong type: expected character and output port".to_string()),
         _ => Err("too many arguments to write-char".to_string()),
     }
+}
+
+/// `(write-string string [port [start [end]]])`: writes the characters of
+/// `string` to the output port. Uses the current output port when `port` is
+/// omitted. Returns [`SrsValue::Unspecified`].
+fn native_write_string(
+    args: &[SrsValue],
+    stdout_port: &Rc<RefCell<PortData>>,
+) -> Result<SrsValue, String> {
+    if args.is_empty() {
+        return Err("not enough arguments to write-string".to_string());
+    }
+    if args.len() > 4 {
+        return Err("too many arguments to write-string".to_string());
+    }
+    let s = match &args[0] {
+        SrsValue::String(s) => s.borrow().clone(),
+        _ => return Err("wrong type: expected string".to_string()),
+    };
+    let port = match args.get(1) {
+        None => stdout_port.clone(),
+        Some(SrsValue::Port(port)) if port.borrow().is_output_port() => port.clone(),
+        Some(SrsValue::Port(_)) => return Err("write-string: not an output port".to_string()),
+        Some(_) => return Err("wrong type: expected output port".to_string()),
+    };
+    let start = match args.get(2) {
+        Some(v) => Some(index_from(v, "write-string")?),
+        None => None,
+    };
+    let end = match args.get(3) {
+        Some(v) => Some(index_from(v, "write-string")?),
+        None => None,
+    };
+    port.borrow_mut()
+        .write_string(&s, start, end)
+        .map(|_| SrsValue::Unspecified)
 }

@@ -69,10 +69,12 @@ Absents : `vector-map`, `vector-for-each`, `vector-copy`.
 
 ### Entrées/sorties (`natives/io.rs`)
 
-`display` `newline`
+`display` `newline` `write-char` `write-string` `read-char` `peek-char`
+`read-line` `char-ready?` `eof-object` `eof-object?` `current-input-port`
+`current-output-port` `open-input-string` `open-output-string`
+`get-output-string`
 
-Absents : `write`, `read`, `read-char`, `write-char`, ports,
-`open-input-file`/`open-output-file`, etc.
+Absents : `write`, `read`, `open-input-file`/`open-output-file`, etc.
 
 ### Totalement absent
 
@@ -100,9 +102,9 @@ Absents : `write`, `read`, `read-char`, `write-char`, ports,
 - `Unspecified`, `Eof`
 - `Procedure` (lambda), `Native`
 - `Promise` — type défini mais mort (aucune primitive ne l'utilise)
+- `Port` — port d'entrée/sortie (stdin/stdout, chaînes en mémoire)
 
-Pas de nombres complexes, pas de type Port explicite (I/O directe via
-`print!`/`println!` côté Rust).
+Pas de nombres complexes.
 
 ## Autres écarts vs R5RS
 
@@ -121,3 +123,7 @@ Pas de nombres complexes, pas de type Port explicite (I/O directe via
 - `procedure_tests.rs` : `lambda`, application, `let`, `let*`
 - `vector_tests.rs` : `vector`, `vector?`, `make-vector`, `vector-length`,
   `vector-ref`, `vector-set!`, `vector->list`, `list->vector`, `vector-fill!`
+- `io_tests.rs` : `display`, `newline`, `write-char`, `write-string`, ports
+  de chaînes (`open-input-string`, `open-output-string`, `get-output-string`),
+  `read-char`, `peek-char`, `read-line`, `char-ready?`, `eof-object`,
+  `current-input-port`, `current-output-port`

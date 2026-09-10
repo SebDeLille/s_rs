@@ -381,6 +381,36 @@ impl PortData {
         }
     }
 
+    /// Writes a string to the output port, optionally bounded by `start` and
+    /// `end` character offsets.
+    pub fn write_string(
+        &mut self,
+        s: &str,
+        start: Option<usize>,
+        end: Option<usize>,
+    ) -> Result<(), String> {
+        let start = start.unwrap_or(0);
+        let end = end.unwrap_or(s.chars().count());
+        if start > end {
+            return Err("write-string: start greater than end".to_string());
+        }
+        let slice: String = s.chars().skip(start).take(end - start).collect();
+        match self {
+            PortData::OutputString(buf) => {
+                buf.push_str(&slice);
+                Ok(())
+            }
+            PortData::OutputStdout => {
+                use std::io::Write;
+                print!("{}", slice);
+                std::io::stdout()
+                    .flush()
+                    .map_err(|e| format!("write-string: {}", e))
+            }
+            _ => Err("write-string: not an output port".to_string()),
+        }
+    }
+
     /// Returns the contents accumulated in an output-string port.
     pub fn get_output_string(&self) -> Result<String, String> {
         match self {
@@ -634,6 +664,20 @@ mod tests {
         port.write_char('x').unwrap();
         port.write_char('y').unwrap();
         assert_eq!(port.get_output_string().unwrap(), "xy");
+    }
+
+    #[test]
+    fn output_string_port_accumulates_substring() {
+        let mut port = PortData::output_string();
+        port.write_string("hello", Some(1), Some(4)).unwrap();
+        assert_eq!(port.get_output_string().unwrap(), "ell");
+    }
+
+    #[test]
+    fn output_string_port_write_string_without_bounds_writes_all() {
+        let mut port = PortData::output_string();
+        port.write_string("hi", None, None).unwrap();
+        assert_eq!(port.get_output_string().unwrap(), "hi");
     }
 
     #[test]
