@@ -1,7 +1,10 @@
 # srsgtk
 
-Interface graphique GTK4 pour l'interpréteur `srs` (squelette : fenêtre +
-layout, sans logique Scheme branchée pour le moment).
+Ce crate fait partie du workspace [`s_rs`](../README.md) ; voir le README
+racine pour une vue d'ensemble du projet.
+
+Interface graphique GTK4 pour l'interpréteur `srs`, basée sur `libsrs`
+(squelette : fenêtre + layout, sans logique Scheme branchée pour le moment).
 
 ## Prérequis système
 
