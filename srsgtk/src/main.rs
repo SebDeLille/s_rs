@@ -2,6 +2,7 @@ use gtk4::prelude::*;
 use gtk4::{Application, ApplicationWindow, DrawingArea, Orientation, Paned};
 
 use libsrs::interpretor::evaluator::global_env;
+use libsrs::interpretor::startup::load_startup_scripts;
 
 mod graphics;
 mod repl;
@@ -28,6 +29,7 @@ fn build_ui(app: &Application) {
 
     let env = global_env();
     graphics::install(&env, &drawing_area);
+    load_startup_scripts(&env);
 
     let repl_widget = repl::build_repl_widget(env);
     repl_widget.set_vexpand(true);

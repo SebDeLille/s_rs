@@ -3,11 +3,13 @@ use std::rc::Rc;
 
 use libsrs::interpretor::evaluator::global_env;
 use libsrs::interpretor::repl::{EvalOutcome, eval_source};
+use libsrs::interpretor::startup::load_startup_scripts;
 use libsrs::types::core::{Env, SrsValue};
 
 fn main() {
     println!("srs REPL - Ctrl+D pour quitter");
     let env = global_env();
+    load_startup_scripts(&env);
     let stdin = io::stdin();
     let mut input = String::new();
 
