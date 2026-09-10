@@ -22,13 +22,22 @@ fn as_str(value: &SrsValue) -> String {
 
 #[test]
 fn string_p_recognizes_strings() {
-    assert!(matches!(eval_src("(string? \"hello\")"), SrsValue::Boolean(true)));
-    assert!(matches!(eval_src("(string? 123)"), SrsValue::Boolean(false)));
+    assert!(matches!(
+        eval_src("(string? \"hello\")"),
+        SrsValue::Boolean(true)
+    ));
+    assert!(matches!(
+        eval_src("(string? 123)"),
+        SrsValue::Boolean(false)
+    ));
 }
 
 #[test]
 fn string_length_returns_character_count() {
-    assert!(matches!(eval_src("(string-length \"hello\")"), SrsValue::Integer(5)));
+    assert!(matches!(
+        eval_src("(string-length \"hello\")"),
+        SrsValue::Integer(5)
+    ));
 }
 
 #[test]

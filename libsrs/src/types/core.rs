@@ -262,7 +262,7 @@ impl PortData {
         }
     }
 
-/// Shared logic for reading/peeking one character from an
+    /// Shared logic for reading/peeking one character from an
     /// [`InputStdin`][PortData::InputStdin] or
     /// [`InputFile`][PortData::InputFile] port.
     fn take_or_read_peeked(
@@ -283,8 +283,7 @@ impl PortData {
     /// [`SrsValue::Eof`] at end of file.
     pub fn read_char(&mut self) -> Result<SrsValue, String> {
         match self {
-            PortData::InputStdin { reader, peeked }
-            | PortData::InputFile { reader, peeked } => {
+            PortData::InputStdin { reader, peeked } | PortData::InputFile { reader, peeked } => {
                 Self::take_or_read_peeked(reader, peeked, true)
                     .map(|opt| opt.map(SrsValue::Character).unwrap_or(SrsValue::Eof))
             }
@@ -306,8 +305,7 @@ impl PortData {
     /// returning [`SrsValue::Eof`] at end of file.
     pub fn peek_char(&mut self) -> Result<SrsValue, String> {
         match self {
-            PortData::InputStdin { reader, peeked }
-            | PortData::InputFile { reader, peeked } => {
+            PortData::InputStdin { reader, peeked } | PortData::InputFile { reader, peeked } => {
                 let c = Self::take_or_read_peeked(reader, peeked, false)?;
                 if peeked.is_none() {
                     *peeked = c;
@@ -345,8 +343,7 @@ impl PortData {
     /// yields EOF, returns [`SrsValue::Eof`].
     pub fn read_line(&mut self) -> Result<SrsValue, String> {
         match self {
-            PortData::InputStdin { reader, peeked }
-            | PortData::InputFile { reader, peeked } => {
+            PortData::InputStdin { reader, peeked } | PortData::InputFile { reader, peeked } => {
                 let mut buf = String::new();
                 loop {
                     let c = Self::take_or_read_peeked(reader, peeked, true);
@@ -524,10 +521,9 @@ impl fmt::Debug for PortData {
                 .debug_struct("InputStdin")
                 .field("peeked", peeked)
                 .finish(),
-            PortData::InputFile { peeked, .. } => f
-                .debug_struct("InputFile")
-                .field("peeked", peeked)
-                .finish(),
+            PortData::InputFile { peeked, .. } => {
+                f.debug_struct("InputFile").field("peeked", peeked).finish()
+            }
             PortData::OutputStdout => write!(f, "OutputStdout"),
             PortData::InputString(chars, pos) => f
                 .debug_tuple("InputString")

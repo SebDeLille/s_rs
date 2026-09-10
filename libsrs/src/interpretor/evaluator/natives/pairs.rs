@@ -63,6 +63,27 @@ pub(super) fn install(env: &Rc<Env>) {
             func: Rc::new(native_eq_p),
         }),
     );
+    env.define(
+        "list".to_string(),
+        SrsValue::Native(Native {
+            name: "list",
+            func: Rc::new(native_list),
+        }),
+    );
+    env.define(
+        "reverse".to_string(),
+        SrsValue::Native(Native {
+            name: "reverse",
+            func: Rc::new(native_reverse),
+        }),
+    );
+    env.define(
+        "pair?".to_string(),
+        SrsValue::Native(Native {
+            name: "pair?",
+            func: Rc::new(native_pair_p),
+        }),
+    );
 }
 
 /// `(cons car cdr)`: allocates a fresh mutable pair.
@@ -156,6 +177,36 @@ fn native_is_null(args: &[SrsValue]) -> Result<SrsValue, String> {
         [obj] => Ok(SrsValue::Boolean(matches!(obj, SrsValue::Nil))),
         [] => Err("not enough arguments to null?".to_string()),
         _ => Err("too many arguments to null?".to_string()),
+    }
+}
+
+/// `(list obj ...)`: returns a newly allocated proper list of its arguments
+/// (R5RS section 6.3.2).
+fn native_list(args: &[SrsValue]) -> Result<SrsValue, String> {
+    Ok(vec_to_list(args.to_vec()))
+}
+
+/// `(reverse list)`: returns a newly allocated list whose elements are the
+/// elements of `list` in reverse order (R5RS section 6.3.2).
+fn native_reverse(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [list] => {
+            let mut items = list_to_vec(list).map_err(|e| e.to_string())?;
+            items.reverse();
+            Ok(vec_to_list(items))
+        }
+        [] => Err("not enough arguments to reverse".to_string()),
+        _ => Err("too many arguments to reverse".to_string()),
+    }
+}
+
+/// `(pair? obj)`: returns `#t` if `obj` is a pair, `#f` otherwise
+/// (R5RS section 6.3.2).
+fn native_pair_p(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [obj] => Ok(SrsValue::Boolean(matches!(obj, SrsValue::Pair(_)))),
+        [] => Err("not enough arguments to pair?".to_string()),
+        _ => Err("too many arguments to pair?".to_string()),
     }
 }
 

@@ -76,3 +76,65 @@ fn null_returns_false_for_a_pair() {
         SrsValue::Boolean(false)
     ));
 }
+
+#[test]
+fn pair_returns_true_for_a_pair() {
+    assert!(matches!(
+        eval_src("(pair? (cons 1 2))"),
+        SrsValue::Boolean(true)
+    ));
+}
+
+#[test]
+fn pair_returns_false_for_the_empty_list() {
+    assert!(matches!(eval_src("(pair? '())"), SrsValue::Boolean(false)));
+}
+
+#[test]
+fn pair_returns_false_for_an_atom() {
+    assert!(matches!(eval_src("(pair? 42)"), SrsValue::Boolean(false)));
+}
+
+#[test]
+fn list_returns_the_empty_list_when_given_no_arguments() {
+    assert!(matches!(eval_src("(list)"), SrsValue::Nil));
+}
+
+#[test]
+fn list_builds_a_proper_list_from_arguments() {
+    assert!(matches!(
+        eval_src("(car (list 1 2 3))"),
+        SrsValue::Integer(1)
+    ));
+    assert!(matches!(
+        eval_src("(car (cdr (list 1 2 3)))"),
+        SrsValue::Integer(2)
+    ));
+    assert!(matches!(
+        eval_src("(length (list 1 2 3))"),
+        SrsValue::Integer(3)
+    ));
+}
+
+#[test]
+fn reverse_reverses_a_proper_list() {
+    let src = "(reverse '(1 2 3))";
+    assert!(matches!(eval_src(src), SrsValue::Pair(_)));
+    assert!(matches!(
+        eval_src("(car (reverse '(1 2 3)))"),
+        SrsValue::Integer(3)
+    ));
+    assert!(matches!(
+        eval_src("(car (cdr (reverse '(1 2 3))))"),
+        SrsValue::Integer(2)
+    ));
+    assert!(matches!(
+        eval_src("(car (cdr (cdr (reverse '(1 2 3)))))"),
+        SrsValue::Integer(1)
+    ));
+}
+
+#[test]
+fn reverse_returns_the_empty_list_for_the_empty_list() {
+    assert!(matches!(eval_src("(reverse '())"), SrsValue::Nil));
+}
