@@ -10,3 +10,4 @@
 
 - `cargo fmt` must pass with no diff before opening a PR.
 - `cargo clippy` must pass with no warnings before opening a PR.
+- `cargo test` must pass before opening a PR.

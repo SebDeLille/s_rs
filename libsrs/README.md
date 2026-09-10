@@ -14,6 +14,8 @@ par les crates `srs` (REPL CLI) et `srsgtk` (interface graphique).
 - `interpretor::repl` : pipeline d'évaluation partagé entre le REPL CLI et
   d'éventuels autres frontends (gère notamment les entrées incomplètes,
   cf. `EvalOutcome`).
+- `interpretor::startup` : chargement des scripts de démarrage utilisateur
+  (`*.scm` dans `$HOME/.config/srs/` et `.srs/` du répertoire courant).
 - `types::core` : types Scheme (`SrsValue`, `Env`, ...).
 
 ## Tests
@@ -24,10 +26,11 @@ cargo test -p libsrs
 
 Les tests incluent :
 - des suites basées sur le rapport R5RS (`tests/r5rs/`) : nombres,
-  procédures, paires, vecteurs ;
+  procédures, paires, vecteurs, entrées/sorties ;
 - des tests sur des fixtures Scheme (`tests/fixtures/scheme/`, ex.
-  `factoriel.scm`, `matrix.scm`) ;
-- des tests unitaires sur le lexer et le reader.
+  `factoriel.scm`) ;
+- des tests unitaires sur le lexer, le reader, l'évaluateur et le
+  chargement des scripts de démarrage.
 
 ## Documentation
 
