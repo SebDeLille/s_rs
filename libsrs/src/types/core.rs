@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
+use std::io::{BufReader, Stdin};
 use std::rc::Rc;
 
 /// Lexical environment: variable bindings + optional parent scope.
@@ -104,6 +105,8 @@ pub enum SrsValue {
     Native(Native),
     /// Delayed computation for `delay`/`force`.
     Promise(Rc<RefCell<PromiseState>>),
+    /// I/O port backed by stdin/stdout — mutable because reads/writes advance state.
+    Port(Rc<RefCell<PortData>>),
 }
 
 impl fmt::Display for SrsValue {
@@ -157,6 +160,7 @@ impl fmt::Display for SrsValue {
             SrsValue::Procedure(_) => write!(f, "#<procedure>"),
             SrsValue::Native(n) => write!(f, "#<procedure:{}>", n.name),
             SrsValue::Promise(_) => write!(f, "#<promise>"),
+            SrsValue::Port(_) => write!(f, "#<port>"),
         }
     }
 }
@@ -214,6 +218,18 @@ impl SrsValue {
     }
 }
 
+impl PortData {
+    /// Builds a port reading from standard input.
+    pub fn stdin() -> Self {
+        PortData::InputStdin(BufReader::new(std::io::stdin()))
+    }
+
+    /// Builds a port writing to standard output.
+    pub fn stdout() -> Self {
+        PortData::OutputStdout
+    }
+}
+
 fn format_char(c: char) -> String {
     match c {
         ' ' => "space".to_string(),
@@ -229,6 +245,13 @@ fn format_char(c: char) -> String {
 pub enum PromiseState {
     Forced(SrsValue),
     Delayed(Vec<SrsValue>, Rc<Env>),
+}
+
+/// Runtime data behind an [`SrsValue::Port`].
+#[derive(Debug)]
+pub enum PortData {
+    InputStdin(BufReader<Stdin>),
+    OutputStdout,
 }
 
 #[cfg(test)]
@@ -272,5 +295,12 @@ mod tests {
             SrsValue::Integer(1),
         ])));
         assert_eq!(value.display_repr(), "#(x 1)");
+    }
+
+    #[test]
+    fn port_displays_as_tagged_object() {
+        let value = SrsValue::Port(Rc::new(RefCell::new(PortData::stdout())));
+        assert_eq!(value.to_string(), "#<port>");
+        assert_eq!(value.display_repr(), "#<port>");
     }
 }
