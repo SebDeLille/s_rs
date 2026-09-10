@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
-use std::io::{BufReader, Stdin};
+use std::io::{BufReader, Read, Stdin};
 use std::rc::Rc;
 
 /// Lexical environment: variable bindings + optional parent scope.
@@ -221,12 +221,88 @@ impl SrsValue {
 impl PortData {
     /// Builds a port reading from standard input.
     pub fn stdin() -> Self {
-        PortData::InputStdin(BufReader::new(std::io::stdin()))
+        PortData::InputStdin {
+            reader: BufReader::new(std::io::stdin()),
+            peeked: None,
+        }
     }
 
     /// Builds a port writing to standard output.
     pub fn stdout() -> Self {
         PortData::OutputStdout
+    }
+
+    /// Reads and consumes one character from the input port, returning
+    /// [`SrsValue::Eof`] at end of file.
+    pub fn read_char(&mut self) -> Result<SrsValue, String> {
+        match self {
+            PortData::InputStdin { reader, peeked } => {
+                if let Some(c) = peeked.take() {
+                    return Ok(SrsValue::Character(c));
+                }
+                read_char_from_reader(reader)
+                    .map(|opt| opt.map(SrsValue::Character).unwrap_or(SrsValue::Eof))
+            }
+            PortData::OutputStdout => Err("read-char: not an input port".to_string()),
+        }
+    }
+
+    /// Reads one character from the input port without consuming it,
+    /// returning [`SrsValue::Eof`] at end of file.
+    pub fn peek_char(&mut self) -> Result<SrsValue, String> {
+        match self {
+            PortData::InputStdin { reader, peeked } => {
+                if let Some(c) = *peeked {
+                    return Ok(SrsValue::Character(c));
+                }
+                let c = read_char_from_reader(reader)?;
+                if let Some(ch) = c {
+                    *peeked = Some(ch);
+                }
+                Ok(c.map(SrsValue::Character).unwrap_or(SrsValue::Eof))
+            }
+            PortData::OutputStdout => Err("peek-char: not an input port".to_string()),
+        }
+    }
+}
+
+fn read_char_from_reader<R: Read>(reader: &mut R) -> Result<Option<char>, String> {
+    use std::io::ErrorKind;
+
+    let mut first = [0u8; 1];
+    if let Err(e) = reader.read_exact(&mut first) {
+        return if e.kind() == ErrorKind::UnexpectedEof {
+            Ok(None)
+        } else {
+            Err(format!("read-char: {}", e))
+        };
+    }
+
+    let len = utf8_char_len(first[0]);
+    let mut buf = [0u8; 4];
+    buf[0] = first[0];
+    if len > 1 {
+        reader
+            .read_exact(&mut buf[1..len])
+            .map_err(|e| format!("read-char: {}", e))?;
+    }
+
+    std::str::from_utf8(&buf[..len])
+        .map_err(|_| "read-char: invalid UTF-8".to_string())
+        .map(|s| s.chars().next())
+}
+
+fn utf8_char_len(first_byte: u8) -> usize {
+    if first_byte & 0b1000_0000 == 0 {
+        1
+    } else if first_byte & 0b1110_0000 == 0b1100_0000 {
+        2
+    } else if first_byte & 0b1111_0000 == 0b1110_0000 {
+        3
+    } else if first_byte & 0b1111_1000 == 0b1111_0000 {
+        4
+    } else {
+        1
     }
 }
 
@@ -250,13 +326,17 @@ pub enum PromiseState {
 /// Runtime data behind an [`SrsValue::Port`].
 #[derive(Debug)]
 pub enum PortData {
-    InputStdin(BufReader<Stdin>),
+    InputStdin {
+        reader: BufReader<Stdin>,
+        peeked: Option<char>,
+    },
     OutputStdout,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Cursor;
 
     #[test]
     fn display_repr_of_string_has_no_quotes() {
@@ -302,5 +382,40 @@ mod tests {
         let value = SrsValue::Port(Rc::new(RefCell::new(PortData::stdout())));
         assert_eq!(value.to_string(), "#<port>");
         assert_eq!(value.display_repr(), "#<port>");
+    }
+
+    #[test]
+    fn utf8_char_len_detects_sequence_lengths() {
+        assert_eq!(utf8_char_len(b'a'), 1);
+        assert_eq!(utf8_char_len(0xc2), 2);
+        assert_eq!(utf8_char_len(0xe2), 3);
+        assert_eq!(utf8_char_len(0xf0), 4);
+    }
+
+    #[test]
+    fn read_char_from_reader_reads_ascii_and_multibyte_chars() {
+        let mut cursor = Cursor::new("aé€");
+        assert_eq!(read_char_from_reader(&mut cursor).unwrap(), Some('a'));
+        assert_eq!(read_char_from_reader(&mut cursor).unwrap(), Some('é'));
+        assert_eq!(read_char_from_reader(&mut cursor).unwrap(), Some('€'));
+    }
+
+    #[test]
+    fn read_char_from_reader_returns_eof_on_empty_input() {
+        let mut cursor = Cursor::new("");
+        assert_eq!(read_char_from_reader(&mut cursor).unwrap(), None);
+    }
+
+    #[test]
+    fn read_char_from_reader_returns_error_on_invalid_utf8() {
+        let mut cursor = Cursor::new(vec![0xff]);
+        assert!(read_char_from_reader(&mut cursor).is_err());
+    }
+
+    #[test]
+    fn output_port_read_char_errors() {
+        let mut port = PortData::stdout();
+        assert!(port.read_char().is_err());
+        assert!(port.peek_char().is_err());
     }
 }

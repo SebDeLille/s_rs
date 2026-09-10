@@ -8,6 +8,10 @@ pub(super) fn install(
     stdin_port: Rc<RefCell<PortData>>,
     stdout_port: Rc<RefCell<PortData>>,
 ) {
+    let stdin_for_current = stdin_port.clone();
+    let stdin_for_read = stdin_port.clone();
+    let stdin_for_peek = stdin_port;
+
     env.define(
         "display".to_string(),
         SrsValue::Native(Native {
@@ -40,7 +44,7 @@ pub(super) fn install(
         "current-input-port".to_string(),
         SrsValue::Native(Native {
             name: "current-input-port",
-            func: Rc::new(move |args| native_current_input_port(args, &stdin_port)),
+            func: Rc::new(move |args| native_current_input_port(args, &stdin_for_current)),
         }),
     );
     env.define(
@@ -48,6 +52,20 @@ pub(super) fn install(
         SrsValue::Native(Native {
             name: "current-output-port",
             func: Rc::new(move |args| native_current_output_port(args, &stdout_port)),
+        }),
+    );
+    env.define(
+        "read-char".to_string(),
+        SrsValue::Native(Native {
+            name: "read-char",
+            func: Rc::new(move |args| native_read_char(args, &stdin_for_read)),
+        }),
+    );
+    env.define(
+        "peek-char".to_string(),
+        SrsValue::Native(Native {
+            name: "peek-char",
+            func: Rc::new(move |args| native_peek_char(args, &stdin_for_peek)),
         }),
     );
 }
@@ -125,4 +143,40 @@ fn native_current_output_port(
         [] => Ok(SrsValue::Port(stdout_port.clone())),
         _ => Err("too many arguments to current-output-port".to_string()),
     }
+}
+
+/// Resolves the port argument for character-input procedures.
+/// Accepts either zero arguments (use the default stdin port) or one
+/// argument that must be an input port.
+fn input_port_from_args(
+    proc_name: &str,
+    args: &[SrsValue],
+    default: &Rc<RefCell<PortData>>,
+) -> Result<Rc<RefCell<PortData>>, String> {
+    match args {
+        [] => Ok(default.clone()),
+        [SrsValue::Port(port)] => Ok(port.clone()),
+        [_] => Err(format!("wrong type: expected input port to {}", proc_name)),
+        _ => Err(format!("too many arguments to {}", proc_name)),
+    }
+}
+
+/// `(read-char [port])`: reads and consumes one character from the input
+/// port, returning `eof-object` at end of file.
+fn native_read_char(
+    args: &[SrsValue],
+    stdin_port: &Rc<RefCell<PortData>>,
+) -> Result<SrsValue, String> {
+    let port = input_port_from_args("read-char", args, stdin_port)?;
+    port.borrow_mut().read_char()
+}
+
+/// `(peek-char [port])`: reads one character from the input port without
+/// consuming it, returning `eof-object` at end of file.
+fn native_peek_char(
+    args: &[SrsValue],
+    stdin_port: &Rc<RefCell<PortData>>,
+) -> Result<SrsValue, String> {
+    let port = input_port_from_args("peek-char", args, stdin_port)?;
+    port.borrow_mut().peek_char()
 }
