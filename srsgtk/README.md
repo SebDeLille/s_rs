@@ -22,6 +22,11 @@ cargo build -p srsgtk
 cargo run -p srsgtk
 ```
 
+## Documentation
+
+- [`doc/graphics_api.md`](doc/graphics_api.md) : primitives Scheme
+  spécifiques (non-R5RS) pour dessiner sur le canvas.
+
 ## Layout
 
 - `gtk::ApplicationWindow` contenant un `gtk::Paned` en orientation

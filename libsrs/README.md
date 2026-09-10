@@ -33,3 +33,5 @@ Les tests incluent :
 
 - [`doc/lexical_analysis.md`](doc/lexical_analysis.md) : détails sur
   l'analyse lexicale.
+- [`doc/r5rs_subset.md`](doc/r5rs_subset.md) : sous-ensemble de R5RS
+  supporté (formes spéciales, primitives, types, écarts vs le standard).
