@@ -136,7 +136,8 @@ Pas de nombres complexes.
 `libsrs/tests/r5rs/` :
 
 - `numerical_tests.rs` : `+`, `*`, `sin`/`cos`/`tan`/`atan`
-- `pair_tests.rs` : `cons`, `car`, `cdr`, `length`, `null?`
+- `pair_tests.rs` : `cons`, `car`, `cdr`, `length`, `null?`, `list`,
+  `reverse`, `pair?`
 - `procedure_tests.rs` : `lambda`, application, `let`, `let*`
 - `vector_tests.rs` : `vector`, `vector?`, `make-vector`, `vector-length`,
   `vector-ref`, `vector-set!`, `vector->list`, `list->vector`, `vector-fill!`
@@ -144,5 +145,5 @@ Pas de nombres complexes.
   `substring`, `string-append`, `list->string`
 - `io_tests.rs` : `display`, `newline`, `write-char`, `write-string`, ports
   de chaînes (`open-input-string`, `open-output-string`, `get-output-string`),
-  `read-char`, `peek-char`, `read-line`, `char-ready?`, `eof-object`,
-  `current-input-port`, `current-output-port`
+  `open-input-file`, `read-char`, `peek-char`, `read-line`, `char-ready?`,
+  `eof-object`, `current-input-port`, `current-output-port`
