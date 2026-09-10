@@ -10,7 +10,9 @@ pub(super) fn install(
 ) {
     let stdin_for_current = stdin_port.clone();
     let stdin_for_read = stdin_port.clone();
-    let stdin_for_peek = stdin_port;
+    let stdin_for_peek = stdin_port.clone();
+    let stdin_for_read_line = stdin_port.clone();
+    let stdin_for_char_ready = stdin_port;
 
     env.define(
         "display".to_string(),
@@ -66,6 +68,20 @@ pub(super) fn install(
         SrsValue::Native(Native {
             name: "peek-char",
             func: Rc::new(move |args| native_peek_char(args, &stdin_for_peek)),
+        }),
+    );
+    env.define(
+        "read-line".to_string(),
+        SrsValue::Native(Native {
+            name: "read-line",
+            func: Rc::new(move |args| native_read_line(args, &stdin_for_read_line)),
+        }),
+    );
+    env.define(
+        "char-ready?".to_string(),
+        SrsValue::Native(Native {
+            name: "char-ready?",
+            func: Rc::new(move |args| native_char_ready_p(args, &stdin_for_char_ready)),
         }),
     );
 }
@@ -155,7 +171,8 @@ fn input_port_from_args(
 ) -> Result<Rc<RefCell<PortData>>, String> {
     match args {
         [] => Ok(default.clone()),
-        [SrsValue::Port(port)] => Ok(port.clone()),
+        [SrsValue::Port(port)] if port.borrow().is_input_port() => Ok(port.clone()),
+        [SrsValue::Port(_)] => Err(format!("{}: not an input port", proc_name)),
         [_] => Err(format!("wrong type: expected input port to {}", proc_name)),
         _ => Err(format!("too many arguments to {}", proc_name)),
     }
@@ -179,4 +196,30 @@ fn native_peek_char(
 ) -> Result<SrsValue, String> {
     let port = input_port_from_args("peek-char", args, stdin_port)?;
     port.borrow_mut().peek_char()
+}
+
+/// `(read-line [port])`: reads characters from the input port until a
+/// newline or end of file, returning the accumulated string. Returns
+/// `eof-object` if no characters could be read before EOF.
+fn native_read_line(
+    args: &[SrsValue],
+    stdin_port: &Rc<RefCell<PortData>>,
+) -> Result<SrsValue, String> {
+    let port = input_port_from_args("read-line", args, stdin_port)?;
+    port.borrow_mut().read_line()
+}
+
+/// `(char-ready? [port])`: returns `#t` if a character is ready on the
+/// input port, `#f` otherwise.
+///
+/// NOTE: Correct implementation for stdin is non-trivial because the
+/// underlying `BufReader` may block on real terminal input. Until string
+/// ports (step 6) or non-blocking input handling is available, this
+/// procedure conservatively returns `#t` for input ports.
+fn native_char_ready_p(
+    args: &[SrsValue],
+    stdin_port: &Rc<RefCell<PortData>>,
+) -> Result<SrsValue, String> {
+    let port = input_port_from_args("char-ready?", args, stdin_port)?;
+    Ok(SrsValue::Boolean(port.borrow().is_input_port()))
 }

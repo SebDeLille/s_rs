@@ -164,3 +164,59 @@ fn peek_then_read_return_same_character() {
         ),
     }
 }
+
+#[test]
+fn read_line_rejects_non_port_argument() {
+    assert!(eval_all("(read-line 42)").is_err());
+}
+
+#[test]
+fn read_line_rejects_too_many_arguments() {
+    assert!(eval_all("(read-line (current-input-port) 1)").is_err());
+}
+
+#[test]
+fn read_line_rejects_output_port() {
+    assert!(eval_all("(read-line (current-output-port))").is_err());
+}
+
+#[test]
+fn char_ready_rejects_non_port_argument() {
+    assert!(eval_all("(char-ready? 42)").is_err());
+}
+
+#[test]
+fn char_ready_rejects_too_many_arguments() {
+    assert!(eval_all("(char-ready? (current-input-port) 1)").is_err());
+}
+
+#[test]
+fn char_ready_rejects_output_port() {
+    assert!(eval_all("(char-ready? (current-output-port))").is_err());
+}
+
+#[test]
+fn char_ready_without_args_returns_boolean() {
+    assert!(matches!(eval_src("(char-ready?)"), SrsValue::Boolean(true)));
+}
+
+#[test]
+fn char_ready_with_input_port_returns_boolean() {
+    assert!(matches!(
+        eval_src("(char-ready? (current-input-port))"),
+        SrsValue::Boolean(true)
+    ));
+}
+
+#[test]
+#[ignore = "requires data on stdin; run with `echo -n 'x' | cargo test -- --ignored`"]
+fn read_line_on_current_input_port_returns_string_or_eof() {
+    let values = read_all(get_lexemes("(read-line)").unwrap()).unwrap();
+    let env = global_env();
+    let result = eval(&values[0], &env).unwrap();
+    assert!(
+        matches!(result, SrsValue::String(_) | SrsValue::Eof),
+        "expected string or eof, got {}",
+        result
+    );
+}
