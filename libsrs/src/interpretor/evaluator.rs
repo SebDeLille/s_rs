@@ -9,6 +9,9 @@ mod special_forms;
 mod tests;
 mod util;
 
+#[cfg(test)]
+pub(crate) use special_forms::resolve_load_path_with_home;
+
 pub use natives::global_env;
 
 /// The specific reason an [`EvalError`] was raised.

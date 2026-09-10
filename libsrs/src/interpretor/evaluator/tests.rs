@@ -1,6 +1,10 @@
+use std::sync::Mutex;
+
 use super::*;
 use crate::interpretor::lexical_analyzer::get_lexemes;
 use crate::interpretor::reader::read_all;
+
+static HOME_LOCK: Mutex<()> = Mutex::new(());
 
 fn eval_src(src: &str) -> Result<SrsValue, EvalError> {
     let values = read_all(get_lexemes(src).unwrap()).unwrap();
@@ -860,4 +864,83 @@ fn load_too_many_args_fails() {
 #[test]
 fn load_non_string_path_fails() {
     assert!(eval_src("(load 42)").is_err());
+}
+
+#[test]
+fn load_bare_name_resolves_to_config_lib_dir() {
+    let resolved = resolve_load_path_with_home("csv", Some("/home/jean"));
+    assert_eq!(
+        resolved,
+        std::path::PathBuf::from("/home/jean/.config/srs/libs/csv.scm")
+    );
+}
+
+#[test]
+fn load_bare_name_missing_home_falls_back_to_literal() {
+    let resolved = resolve_load_path_with_home("csv", None);
+    assert_eq!(resolved, std::path::PathBuf::from("csv"));
+}
+
+#[test]
+fn load_explicit_path_with_slash_unresolved() {
+    let resolved = resolve_load_path_with_home("./csv.scm", Some("/home/jean"));
+    assert_eq!(resolved, std::path::PathBuf::from("./csv.scm"));
+}
+
+#[test]
+fn load_explicit_path_ending_in_scm_unresolved() {
+    let resolved = resolve_load_path_with_home("/path/to/csv", Some("/home/jean"));
+    assert_eq!(resolved, std::path::PathBuf::from("/path/to/csv"));
+}
+
+#[test]
+fn load_bare_name_integration_uses_config_lib_dir() {
+    let _guard = HOME_LOCK.lock().unwrap();
+
+    let home = std::env::temp_dir().join(format!("srs_test_home_{}", std::process::id()));
+    let libs = home.join(".config").join("srs").join("libs");
+    std::fs::create_dir_all(&libs).unwrap();
+
+    let lib_path = libs.join("csv.scm");
+    {
+        use std::io::Write;
+        let mut file = std::fs::File::create(&lib_path).unwrap();
+        file.write_all(b"(define answer 42)").unwrap();
+    }
+
+    let original_home = std::env::var("HOME").ok();
+    let result = unsafe {
+        std::env::set_var("HOME", &home);
+        let result = eval_src("(load \"csv\") answer");
+        if let Some(h) = original_home {
+            std::env::set_var("HOME", h);
+        } else {
+            std::env::remove_var("HOME");
+        }
+        result
+    };
+    std::fs::remove_dir_all(&home).ok();
+
+    assert!(matches!(result.unwrap(), SrsValue::Integer(42)));
+}
+
+#[test]
+fn load_bare_name_missing_file_error_mentions_resolved_path() {
+    let _guard = HOME_LOCK.lock().unwrap();
+
+    let original_home = std::env::var("HOME").ok();
+    let err = unsafe {
+        std::env::set_var("HOME", "/nonexistent/home/dir/for/srs/tests");
+        let err = eval_src("(load \"nonexistent_lib\")").unwrap_err();
+        if let Some(h) = original_home {
+            std::env::set_var("HOME", h);
+        } else {
+            std::env::remove_var("HOME");
+        }
+        err
+    };
+
+    let msg = format!("{}", err);
+    assert!(msg.contains("nonexistent_lib"));
+    assert!(msg.contains(".config/srs/libs"));
 }
