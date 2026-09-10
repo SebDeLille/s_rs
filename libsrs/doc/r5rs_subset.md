@@ -54,11 +54,15 @@ Absents : `atan` à 2 arguments, `exp`, `log`.
 
 ### Paires et listes (`natives/pairs.rs`)
 
-`cons` `car` `cdr` `apply` `map` `length` `null?`
+`cons` `car` `cdr` `apply` `map` `length` `null?` `eq?`
+
+`eq?` compare l'identité des objets mutables (`Rc::ptr_eq`), et les
+valeurs atomiques par valeur (deux nombres égaux comptent comme
+égaux pour `eq?`, conformément à R5RS).
 
 Absents : `pair?`, `list?`, `list`, `set-car!`, `set-cdr!`, `append`,
 `reverse`, `list-ref`, `list-tail`, `memq`/`memv`/`member`,
-`assq`/`assv`/`assoc`, `for-each`, `caar`/`cadr`/..., `eq?`/`eqv?`/`equal?`.
+`assq`/`assv`/`assoc`, `for-each`, `caar`/`cadr`/..., `eqv?`/`equal?`.
 
 ### Vecteurs (`natives/vectors.rs`)
 
@@ -84,14 +88,15 @@ Absents : `write`, `read`, `open-input-file`/`open-output-file`, etc.
 - Symboles : `symbol?`, `symbol->string`, `string->symbol`
 - Booléens : `boolean?`
 - Procédures : `procedure?`
-- Égalité : `eq?`, `eqv?`, `equal?`
+- Égalité : `eqv?`, `equal?`
 
 ## Types Scheme (`types::core::SrsValue`)
 
 - `Integer(i64)` — exact
 - `Float(f64)` — inexact
-- `Rational(i64, i64)` — exact rationnel, pas de bignum, pas de réduction
-  automatique à la création (seulement via `inexact->exact`)
+- `Rational(i64, i64)` — exact rationnel, pas de bignum. La conversion
+  `inexact->exact` réduit la fraction par le PGCD ; les littéraux
+  rationnels ne sont pas supportés.
 - `Boolean(bool)`
 - `Character(char)`
 - `String` — mutable (`Rc<RefCell<String>>`)
@@ -113,6 +118,9 @@ Pas de nombres complexes.
   profondes (pas de trampoline).
 - Pas de continuations (`call/cc`), pas de `dynamic-wind`.
 - Pas de macros hygiéniques.
+- Pas de forme `begin` autonome, mais les corps de `lambda`, `let`,
+  `let*` et `do` évaluent leurs expressions en séquence et retournent la
+  dernière valeur (comportement équivalent à un `begin` implicite).
 
 ## Périmètre couvert par les tests
 
