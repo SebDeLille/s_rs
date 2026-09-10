@@ -43,10 +43,10 @@ pub fn load_startup_scripts(env: &Rc<Env>) {
 fn startup_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::with_capacity(2);
 
-    if let Ok(home) = std::env::var("HOME") {
-        if !home.is_empty() {
-            dirs.push(PathBuf::from(home).join(".config").join("srs"));
-        }
+    if let Ok(home) = std::env::var("HOME")
+        && !home.is_empty()
+    {
+        dirs.push(PathBuf::from(home).join(".config").join("srs"));
     }
 
     if let Ok(cwd) = std::env::current_dir() {
