@@ -350,9 +350,9 @@ fn native_open_input_string(args: &[SrsValue]) -> Result<SrsValue, String> {
 /// located at `path`.
 fn native_open_input_file(args: &[SrsValue]) -> Result<SrsValue, String> {
     match args {
-        [SrsValue::String(s)] => Ok(SrsValue::Port(Rc::new(RefCell::new(
-            PortData::input_file(&*s.borrow())?,
-        )))),
+        [SrsValue::String(s)] => Ok(SrsValue::Port(Rc::new(RefCell::new(PortData::input_file(
+            &*s.borrow(),
+        )?)))),
         [SrsValue::Symbol(_)] => Err("open-input-file: expected string".to_string()),
         [] => Err("not enough arguments to open-input-file".to_string()),
         [_] => Err("wrong type: expected string".to_string()),

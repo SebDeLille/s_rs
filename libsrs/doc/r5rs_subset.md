@@ -54,15 +54,16 @@ Absents : `atan` à 2 arguments, `exp`, `log`.
 
 ### Paires et listes (`natives/pairs.rs`)
 
-`cons` `car` `cdr` `apply` `map` `length` `null?` `eq?`
+`cons` `car` `cdr` `apply` `map` `length` `null?` `eq?` `list` `reverse`
+`pair?`
 
 `eq?` compare l'identité des objets mutables (`Rc::ptr_eq`), et les
 valeurs atomiques par valeur (deux nombres égaux comptent comme
 égaux pour `eq?`, conformément à R5RS).
 
-Absents : `pair?`, `list?`, `list`, `set-car!`, `set-cdr!`, `append`,
-`reverse`, `list-ref`, `list-tail`, `memq`/`memv`/`member`,
-`assq`/`assv`/`assoc`, `for-each`, `caar`/`cadr`/..., `eqv?`/`equal?`.
+Absents : `list?`, `set-car!`, `set-cdr!`, `append`, `list-ref`,
+`list-tail`, `memq`/`memv`/`member`, `assq`/`assv`/`assoc`,
+`for-each`, `caar`/`cadr`/..., `eqv?`/`equal?`.
 
 ### Vecteurs (`natives/vectors.rs`)
 
