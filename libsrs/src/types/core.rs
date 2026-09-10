@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
-use std::io::{BufReader, Read, Stdin};
+use std::io::{BufReader, Read};
 use std::rc::Rc;
 
 /// Lexical environment: variable bindings + optional parent scope.
@@ -222,7 +222,7 @@ impl PortData {
     /// Builds a port reading from standard input.
     pub fn stdin() -> Self {
         PortData::InputStdin {
-            reader: BufReader::new(std::io::stdin()),
+            reader: BufReader::new(Box::new(std::io::stdin())),
             peeked: None,
         }
     }
@@ -230,6 +230,16 @@ impl PortData {
     /// Builds a port writing to standard output.
     pub fn stdout() -> Self {
         PortData::OutputStdout
+    }
+
+    /// Builds an input port from a byte slice, for unit tests.
+    #[cfg(test)]
+    pub fn test_input(data: &'static [u8]) -> Self {
+        use std::io::Cursor;
+        PortData::InputStdin {
+            reader: BufReader::new(Box::new(Cursor::new(data))),
+            peeked: None,
+        }
     }
 
     /// Reads and consumes one character from the input port, returning
@@ -262,6 +272,40 @@ impl PortData {
                 Ok(c.map(SrsValue::Character).unwrap_or(SrsValue::Eof))
             }
             PortData::OutputStdout => Err("peek-char: not an input port".to_string()),
+        }
+    }
+
+    /// Returns `true` if this port can be used for input.
+    pub fn is_input_port(&self) -> bool {
+        matches!(self, PortData::InputStdin { .. })
+    }
+
+    /// Reads characters from the input port until a newline (excluded) or
+    /// end of file, returning the accumulated string. If the first read
+    /// yields EOF, returns [`SrsValue::Eof`].
+    pub fn read_line(&mut self) -> Result<SrsValue, String> {
+        match self {
+            PortData::InputStdin { reader, peeked } => {
+                let mut buf = String::new();
+                loop {
+                    let c = if let Some(c) = peeked.take() {
+                        Ok(Some(c))
+                    } else {
+                        read_char_from_reader(reader)
+                    };
+                    match c? {
+                        Some('\n') => return Ok(SrsValue::String(Rc::new(RefCell::new(buf)))),
+                        Some(ch) => buf.push(ch),
+                        None => {
+                            if buf.is_empty() {
+                                return Ok(SrsValue::Eof);
+                            }
+                            return Ok(SrsValue::String(Rc::new(RefCell::new(buf))));
+                        }
+                    }
+                }
+            }
+            PortData::OutputStdout => Err("read-line: not an input port".to_string()),
         }
     }
 }
@@ -324,13 +368,24 @@ pub enum PromiseState {
 }
 
 /// Runtime data behind an [`SrsValue::Port`].
-#[derive(Debug)]
 pub enum PortData {
     InputStdin {
-        reader: BufReader<Stdin>,
+        reader: BufReader<Box<dyn Read>>,
         peeked: Option<char>,
     },
     OutputStdout,
+}
+
+impl fmt::Debug for PortData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PortData::InputStdin { peeked, .. } => f
+                .debug_struct("InputStdin")
+                .field("peeked", peeked)
+                .finish(),
+            PortData::OutputStdout => write!(f, "OutputStdout"),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -417,5 +472,29 @@ mod tests {
         let mut port = PortData::stdout();
         assert!(port.read_char().is_err());
         assert!(port.peek_char().is_err());
+    }
+
+    #[test]
+    fn read_line_returns_strings_until_eof() {
+        let mut port = PortData::test_input(b"abc\ndef");
+        assert!(
+            matches!(port.read_line().unwrap(), SrsValue::String(s) if s.borrow().as_str() == "abc")
+        );
+        assert!(
+            matches!(port.read_line().unwrap(), SrsValue::String(s) if s.borrow().as_str() == "def")
+        );
+        assert!(matches!(port.read_line().unwrap(), SrsValue::Eof));
+    }
+
+    #[test]
+    fn read_line_returns_eof_on_empty_input() {
+        let mut port = PortData::test_input(b"");
+        assert!(matches!(port.read_line().unwrap(), SrsValue::Eof));
+    }
+
+    #[test]
+    fn output_port_read_line_errors() {
+        let mut port = PortData::stdout();
+        assert!(port.read_line().is_err());
     }
 }
