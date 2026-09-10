@@ -69,8 +69,7 @@ fn scm_files_in(dir: &Path) -> Vec<PathBuf> {
         .filter_map(|entry| entry.ok())
         .map(|entry| entry.path())
         .filter(|path| {
-            path.is_file()
-                && path.extension().and_then(|ext| ext.to_str()) == Some("scm")
+            path.is_file() && path.extension().and_then(|ext| ext.to_str()) == Some("scm")
         })
         .collect();
 
@@ -110,14 +109,8 @@ mod tests {
             load_script(&path, &env).unwrap();
         }
 
-        assert!(matches!(
-            env.get("from-a"),
-            Some(SrsValue::Integer(1))
-        ));
-        assert!(matches!(
-            env.get("from-b"),
-            Some(SrsValue::Integer(2))
-        ));
+        assert!(matches!(env.get("from-a"), Some(SrsValue::Integer(1))));
+        assert!(matches!(env.get("from-b"), Some(SrsValue::Integer(2))));
         assert!(env.get("ignored").is_none());
     }
 

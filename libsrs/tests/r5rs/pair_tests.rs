@@ -61,18 +61,12 @@ fn length_counts_a_hand_built_list() {
 
 #[test]
 fn null_returns_true_for_the_empty_list() {
-    assert!(matches!(
-        eval_src("(null? '())"),
-        SrsValue::Boolean(true)
-    ));
+    assert!(matches!(eval_src("(null? '())"), SrsValue::Boolean(true)));
 }
 
 #[test]
 fn null_returns_false_for_a_non_empty_list() {
-    assert!(matches!(
-        eval_src("(null? '(1))"),
-        SrsValue::Boolean(false)
-    ));
+    assert!(matches!(eval_src("(null? '(1))"), SrsValue::Boolean(false)));
 }
 
 #[test]
