@@ -8,42 +8,65 @@
     "Parse LINE into a list of field strings, splitting on DELIMITER."
     (let ((len (string-length line))
           (d (string-ref delimiter 0)))
-      (define csv-parse-line-loop
-        (lambda (i field fields)
-          (if (= i len)
-              (reverse (cons (list->string (reverse field)) fields))
-              (let ((c (string-ref line i)))
-                (if (string=? (list->string (list c)) (list->string (list d)))
-                    (csv-parse-line-loop
-                     (+ i 1)
-                     '()
-                     (cons (list->string (reverse field)) fields))
-                    (csv-parse-line-loop
-                     (+ i 1)
-                     (cons c field)
-                     fields))))))
-      (csv-parse-line-loop 0 '() '()))))
+      (do ((i 0 (+ i 1))
+           (field '() (if (char=? (string-ref line i) d)
+                          '()
+                          (cons (string-ref line i) field)))
+           (fields '() (if (char=? (string-ref line i) d)
+                           (cons (list->string (reverse field)) fields)
+                           fields)))
+          ((= i len) (reverse (cons (list->string (reverse field)) fields)))
+        'ok))))
+
+(define csv-call-with-file
+  (lambda (path delimiter callback)
+    "Open PATH as a streaming CSV, parse the header once, then call CALLBACK
+with (NEXT-ROW HEADER). NEXT-ROW returns the next parsed row as a list of
+field strings, or '() at EOF. The input port is closed on normal return or
+if CALLBACK raises an error."
+    (let ((port (open-input-file path)))
+      (define next-row
+        (lambda ()
+          (let ((line (read-line port)))
+            (if (eof-object? line)
+                '()
+                (if (= (string-length line) 0)
+                    (next-row)
+                    (csv-parse-line line delimiter))))))
+      (let ((header (next-row)))
+        (dynamic-wind
+          (lambda () 'ok)
+          (lambda () (callback next-row header))
+          (lambda () (close-input-port port)))))))
+
+(define csv-for-each-row
+  (lambda (path delimiter row-fn)
+    "Iterate over the data rows of the CSV at PATH. For each row, call
+ROW-FN with (HEADER ROW). The file is read lazily, one line at a time."
+    (csv-call-with-file
+      path
+      delimiter
+      (lambda (next-row header)
+        (define first-row (next-row))
+        (do ((row first-row (next-row)))
+            ((null? row) 'done)
+          (row-fn header row))))))
 
 (define csv-read-file
   (lambda (path delimiter)
     "Read the CSV file at PATH and return (cons header-vector rows-vector)."
-    (let ((port (open-input-file path)))
-      (define read-lines
-        (lambda (acc)
-          (let ((line (read-line port)))
-            (if (eof-object? line)
-                (reverse acc)
-                (if (= (string-length line) 0)
-                    (read-lines acc)
-                    (read-lines (cons line acc)))))))
-      (let ((lines (read-lines '())))
-        (if (null? lines)
-            (cons (vector) (vector))
-            (cons (list->vector (csv-parse-line (car lines) delimiter))
-                  (list->vector
-                   (map (lambda (line)
-                          (list->vector (csv-parse-line line delimiter)))
-                        (cdr lines)))))))))
+    (csv-call-with-file
+      path
+      delimiter
+      (lambda (next-row header)
+        (define collect
+          (lambda (acc)
+            (let ((row (next-row)))
+              (if (null? row)
+                  (reverse acc)
+                  (collect (cons row acc))))))
+        (cons (list->vector header)
+              (list->vector (map list->vector (collect '()))))))))
 
 (define csv-header
   (lambda (csv)

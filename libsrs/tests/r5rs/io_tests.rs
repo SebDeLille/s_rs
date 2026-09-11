@@ -420,3 +420,36 @@ fn write_string_requires_string() {
 fn write_string_with_too_many_args_fails() {
     assert!(eval_all("(let ((p (open-output-string))) (write-string \"a\" p 0 1 2))").is_err());
 }
+
+#[test]
+fn close_input_port_closes_file_port() {
+    let path = make_temp_file("line1\nline2\n");
+    let scm = format!(
+        "(let ((p (open-input-file \"{}\")))
+            (close-input-port p)
+            (eof-object? (read-line p)))",
+        escape_path(&path)
+    );
+    assert!(boolean_value(eval_src(&scm)));
+}
+
+#[test]
+fn close_input_port_closes_string_port() {
+    let src = r#"
+        (let ((p (open-input-string "abc")))
+          (close-input-port p)
+          (eof-object? (read-char p)))
+    "#;
+    assert!(boolean_value(eval_src(src)));
+}
+
+#[test]
+fn close_input_port_requires_input_port() {
+    assert!(eval_all("(close-input-port (current-output-port))").is_err());
+}
+
+#[test]
+fn close_input_port_arity() {
+    assert!(eval_all("(close-input-port)").is_err());
+    assert!(eval_all("(close-input-port (open-input-string \"x\") 2)").is_err());
+}

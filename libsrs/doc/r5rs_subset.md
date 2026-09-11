@@ -102,7 +102,7 @@ après l'exécution de `after` (pas de continuation capturable et invocable).
 `display` `newline` `write-char` `write-string` `read-char` `peek-char`
 `read-line` `char-ready?` `eof-object` `eof-object?` `current-input-port`
 `current-output-port` `open-input-string` `open-input-file` `open-output-string`
-`get-output-string`
+`get-output-string` `close-input-port`
 
 Absents : `write`, `read`, `open-output-file`, etc.
 
@@ -165,5 +165,5 @@ Pas de nombres complexes.
   d'erreur du thunk, arité).
 - `io_tests.rs` : `display`, `newline`, `write-char`, `write-string`, ports
   de chaînes (`open-input-string`, `open-output-string`, `get-output-string`),
-  `open-input-file`, `read-char`, `peek-char`, `read-line`, `char-ready?`,
-  `eof-object`, `current-input-port`, `current-output-port`
+  `open-input-file`, `close-input-port`, `read-char`, `peek-char`, `read-line`,
+  `char-ready?`, `eof-object`, `current-input-port`, `current-output-port`

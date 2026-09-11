@@ -242,6 +242,24 @@ impl PortData {
         PortData::OutputString(String::new())
     }
 
+    /// Closes an input port, releasing its underlying resources.
+    ///
+    /// File and stdin ports are replaced by an empty reader so the OS handle
+    /// is dropped; string ports are drained. Subsequent reads return EOF.
+    pub fn close(&mut self) {
+        match self {
+            PortData::InputStdin { reader, peeked } | PortData::InputFile { reader, peeked } => {
+                *reader = BufReader::new(Box::new(std::io::empty()));
+                *peeked = None;
+            }
+            PortData::InputString(chars, pos) => {
+                chars.clear();
+                *pos = 0;
+            }
+            _ => {}
+        }
+    }
+
     /// Builds an input port reading from `path`, or returns an I/O error.
     pub fn input_file<P: AsRef<std::path::Path>>(path: P) -> Result<Self, String> {
         use std::fs::File;

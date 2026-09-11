@@ -132,6 +132,13 @@ pub(super) fn install(
             func: Rc::new(move |args| native_write_string(args, &stdout_for_write_string)),
         }),
     );
+    env.define(
+        "close-input-port".to_string(),
+        SrsValue::Native(Native {
+            name: "close-input-port",
+            func: Rc::new(native_close_input_port),
+        }),
+    );
 }
 
 /// `(display value [port])`: writes `value` to the output port using its
@@ -381,6 +388,21 @@ fn native_get_output_string(args: &[SrsValue]) -> Result<SrsValue, String> {
         }
         [] => Err("not enough arguments to get-output-string".to_string()),
         _ => Err("wrong type: expected output-string port".to_string()),
+    }
+}
+
+/// `(close-input-port port)`: closes the input port, releasing its underlying
+/// resources. Subsequent reads return EOF.
+fn native_close_input_port(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [SrsValue::Port(port)] if port.borrow().is_input_port() => {
+            port.borrow_mut().close();
+            Ok(SrsValue::Unspecified)
+        }
+        [] => Err("not enough arguments to close-input-port".to_string()),
+        [SrsValue::Port(_)] => Err("close-input-port: not an input port".to_string()),
+        [_] => Err("wrong type: expected input port".to_string()),
+        _ => Err("too many arguments to close-input-port".to_string()),
     }
 }
 
