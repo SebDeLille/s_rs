@@ -38,3 +38,37 @@ rendu.
 - Le widget REPL GTK (`srsgtk/src/repl.rs`) est de l'UI hôte, pas une
   primitive Scheme : il utilise `eval_source` de `libsrs` comme n'importe
   quel frontend.
+
+## Échantillonnage de fonctions (`function-samples`)
+
+`function-samples` n'est **pas** une primitive Rust : c'est du Scheme pur
+(`srsgtk/scm/function-samples.scm`), chargé une fois au démarrage par
+`srsgtk/src/main.rs` (avant les scripts de `.srs/startup`), et utilisant
+uniquement des procédures génériques déjà exposées par `libsrs` — dont les
+extensions non-R5RS `nan?` et `finite?` (`libsrs/src/interpretor/evaluator/natives/arithmetic.rs`).
+
+| Primitive | Signature | Description |
+|---|---|---|
+| `function-samples` | `(f xmin xmax n)` | Échantillonne `f` (procédure à un argument) en `n` points régulièrement espacés entre `xmin` et `xmax` (toujours convertis en `Float`, pour qu'une division par zéro dans `f` produise `+inf.0`/`+nan.0` plutôt qu'une erreur arithmétique exacte). Retourne une liste de segments, chaque segment étant une liste de paires `(x . y)` en ordre croissant de `x` |
+
+Un point est ignoré, et le segment courant clos, dès que le résultat de `f`
+n'est pas un nombre ou n'est pas fini (`nan?`/`finite?`) — ceci évite de
+tracer un trait à travers une discontinuité ou une asymptote.
+
+**Limitation connue** : l'interpréteur n'a aucun mécanisme d'exception
+Scheme (pas de `guard`/`catch`/`call/cc`). Une erreur d'évaluation levée par
+`f` elle-même (ex : mauvais type d'argument) n'est donc **pas** rattrapée et
+se propage hors de `function-samples`, contrairement aux résultats non
+finis qui eux sont filtrés.
+
+### Exemple
+
+```scheme
+(define f (lambda (x) (/ 1.0 x)))
+(function-samples f -2.0 2.0 5)
+;; => (((-2.0 . -0.5) (-1.0 . -1.0))
+;;     ((1.0 . 1.0) (2.0 . 0.5)))
+;; (le point x = 0.0, où f produit +inf.0, est filtré et coupe le tracé
+;; en deux segments)
+```
+

@@ -2,6 +2,7 @@ use gtk4::prelude::*;
 use gtk4::{Application, ApplicationWindow, DrawingArea, Orientation, Paned};
 
 use libsrs::interpretor::evaluator::global_env;
+use libsrs::interpretor::repl::{EvalOutcome, eval_source};
 use libsrs::interpretor::startup::load_startup_scripts;
 
 mod graphics;
@@ -10,6 +11,12 @@ mod repl;
 const APP_ID: &str = "org.srs.srsgtk";
 const WINDOW_WIDTH: i32 = 800;
 const WINDOW_HEIGHT: i32 = 600;
+
+/// Scheme prelude bundled with srsgtk (not a Rust primitive): pure
+/// `.scm` code relying only on generic procedures already exposed by
+/// `libsrs`. Evaluated once at startup, before user startup scripts, so
+/// it's available to any script.
+const FUNCTION_SAMPLES_SCM: &str = include_str!("../scm/function-samples.scm");
 
 fn main() {
     let app = Application::builder().application_id(APP_ID).build();
@@ -29,6 +36,13 @@ fn build_ui(app: &Application) {
 
     let env = global_env();
     graphics::install(&env, &drawing_area);
+    match eval_source(FUNCTION_SAMPLES_SCM, &env) {
+        Ok(EvalOutcome::Done(_)) => {}
+        Ok(EvalOutcome::Incomplete) => {
+            eprintln!("erreur: prelude function-samples: unexpected end of input");
+        }
+        Err(message) => eprintln!("erreur: prelude function-samples: {}", message),
+    }
     load_startup_scripts(&env);
 
     let repl_widget = repl::build_repl_widget(env);
