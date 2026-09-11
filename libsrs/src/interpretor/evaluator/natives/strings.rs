@@ -56,6 +56,13 @@ pub(super) fn install(env: &Rc<Env>) {
             func: Rc::new(native_list_to_string),
         }),
     );
+    env.define(
+        "char=?".to_string(),
+        SrsValue::Native(Native {
+            name: "char=?",
+            func: Rc::new(native_char_eq),
+        }),
+    );
 }
 
 /// `(string? obj)`: returns `#t` if `obj` is a string, `#f` otherwise.
@@ -172,4 +179,27 @@ fn native_list_to_string(args: &[SrsValue]) -> Result<SrsValue, String> {
         [] => Err("not enough arguments to list->string".to_string()),
         _ => Err("too many arguments to list->string".to_string()),
     }
+}
+
+/// `(char=? char1 char2 ...)`: returns `#t` iff all arguments are the same
+/// character.
+fn native_char_eq(args: &[SrsValue]) -> Result<SrsValue, String> {
+    if args.is_empty() {
+        return Err("not enough arguments to char=?".to_string());
+    }
+    let first = match &args[0] {
+        SrsValue::Character(c) => *c,
+        _ => return Err("wrong type: expected character".to_string()),
+    };
+    for arg in &args[1..] {
+        match arg {
+            SrsValue::Character(c) => {
+                if *c != first {
+                    return Ok(SrsValue::Boolean(false));
+                }
+            }
+            _ => return Err("wrong type: expected character".to_string()),
+        }
+    }
+    Ok(SrsValue::Boolean(true))
 }
