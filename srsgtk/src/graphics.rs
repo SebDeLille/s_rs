@@ -17,7 +17,7 @@ use libsrs::interpretor::evaluator::apply;
 use libsrs::types::core::{Env, Native, SrsValue};
 
 /// RGB color in the `[0.0, 1.0]` range, as expected by Cairo.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 struct Color {
     r: f64,
     g: f64,
@@ -272,21 +272,9 @@ pub fn install(env: &Rc<Env>, drawing_area: &DrawingArea) {
         let state = state.clone();
         let drawing_area = drawing_area.clone();
         move |args| {
-            let [x, y] = args else {
-                return Err("draw-point: expected 2 arguments (x y)".to_string());
-            };
-            let x = numeric_to_f64(x, "draw-point")?;
-            let y = numeric_to_f64(y, "draw-point")?;
-            const POINT_RADIUS: f64 = 2.0;
-            let color = state.borrow().current_color;
-            state.borrow_mut().commands.push(DrawCommand::Point {
-                x,
-                y,
-                r: POINT_RADIUS,
-                color,
-            });
+            let result = draw_point(args, &mut state.borrow_mut());
             drawing_area.queue_draw();
-            Ok(SrsValue::Unspecified)
+            result
         }
     });
     define_native(env, "canvas-width", {
@@ -355,5 +343,91 @@ fn numeric_to_f64(value: &SrsValue, proc_name: &str) -> Result<f64, String> {
         SrsValue::Float(f) => Ok(*f),
         SrsValue::Rational(n, d) => Ok(*n as f64 / *d as f64),
         _ => Err(format!("wrong type: expected number to {}", proc_name)),
+    }
+}
+
+/// Implementation of the `draw-point` primitive without any GTK side
+/// effects. Errors on wrong arity or non-numeric arguments.
+fn draw_point(args: &[SrsValue], state: &mut CanvasState) -> Result<SrsValue, String> {
+    let [x, y] = args else {
+        return Err("draw-point: expected 2 arguments (x y)".to_string());
+    };
+    let x = numeric_to_f64(x, "draw-point")?;
+    let y = numeric_to_f64(y, "draw-point")?;
+    const POINT_RADIUS: f64 = 2.0;
+    let color = state.current_color;
+    state
+        .commands
+        .push(DrawCommand::Point { x, y, r: POINT_RADIUS, color });
+    Ok(SrsValue::Unspecified)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn draw_point_records_integer_coordinates_with_default_color() {
+        let mut state = CanvasState::new();
+        let args = [SrsValue::Integer(12), SrsValue::Integer(34)];
+
+        assert!(draw_point(&args, &mut state).is_ok());
+        assert_eq!(state.commands.len(), 1);
+        assert!(matches!(
+            &state.commands[0],
+            DrawCommand::Point { x, y, r, color }
+            if *x == 12.0 && *y == 34.0 && *r == 2.0 && *color == DEFAULT_COLOR
+        ));
+    }
+
+    #[test]
+    fn draw_point_records_current_color() {
+        let mut state = CanvasState::new();
+        state.current_color = Color { r: 0.1, g: 0.2, b: 0.3 };
+
+        draw_point(&[SrsValue::Float(1.5), SrsValue::Float(2.5)], &mut state).unwrap();
+
+        assert_eq!(state.commands.len(), 1);
+        assert!(matches!(
+            &state.commands[0],
+            DrawCommand::Point { color, .. }
+            if *color == state.current_color
+        ));
+    }
+
+    #[test]
+    fn draw_point_rejects_too_few_arguments() {
+        let mut state = CanvasState::new();
+
+        assert!(draw_point(&[SrsValue::Integer(1)], &mut state).is_err());
+        assert!(state.commands.is_empty());
+    }
+
+    #[test]
+    fn draw_point_rejects_too_many_arguments() {
+        let mut state = CanvasState::new();
+
+        assert!(
+            draw_point(
+                &[SrsValue::Integer(1), SrsValue::Integer(2), SrsValue::Integer(3)],
+                &mut state
+            )
+            .is_err()
+        );
+        assert!(state.commands.is_empty());
+    }
+
+    #[test]
+    fn draw_point_rejects_non_numeric_arguments() {
+        let mut state = CanvasState::new();
+
+        assert!(
+            draw_point(
+                &[SrsValue::String(Rc::new(RefCell::new("x".to_string()))), SrsValue::Integer(2)],
+                &mut state
+            )
+            .is_err()
+        );
+        assert!(state.commands.is_empty());
     }
 }
