@@ -3,7 +3,7 @@ use libsrs::interpretor::lexical_analyzer::get_lexemes;
 use libsrs::interpretor::reader::read_all;
 use libsrs::types::core::SrsValue;
 
-const FUNCTION_SAMPLES_SCM: &str = include_str!("../scm/function-samples.scm");
+const FUNCTION_SAMPLES_SCM: &str = include_str!("../../libs/function-samples.scm");
 
 fn eval_all(scm: &str, env: &std::rc::Rc<libsrs::types::core::Env>) -> SrsValue {
     let values = read_all(get_lexemes(scm).unwrap()).unwrap();

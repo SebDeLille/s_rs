@@ -42,7 +42,7 @@ rendu.
 ## Échantillonnage de fonctions (`function-samples`)
 
 `function-samples` n'est **pas** une primitive Rust : c'est du Scheme pur
-(`srsgtk/scm/function-samples.scm`), chargé une fois au démarrage par
+(`libs/function-samples.scm`), chargé une fois au démarrage par
 `srsgtk/src/main.rs` (avant les scripts de `.srs/startup`), et utilisant
 uniquement des procédures génériques déjà exposées par `libsrs` — dont les
 extensions non-R5RS `nan?` et `finite?` (`libsrs/src/interpretor/evaluator/natives/arithmetic.rs`).

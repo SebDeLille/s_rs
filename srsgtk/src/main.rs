@@ -16,7 +16,7 @@ const WINDOW_HEIGHT: i32 = 600;
 /// `.scm` code relying only on generic procedures already exposed by
 /// `libsrs`. Evaluated once at startup, before user startup scripts, so
 /// it's available to any script.
-const FUNCTION_SAMPLES_SCM: &str = include_str!("../scm/function-samples.scm");
+const FUNCTION_SAMPLES_SCM: &str = include_str!("../../libs/function-samples.scm");
 
 fn main() {
     let app = Application::builder().application_id(APP_ID).build();
