@@ -24,7 +24,10 @@ Dispatch dans `interpretor/evaluator/special_forms.rs::eval_combination`.
 
 `begin`, `cond`, `case`, `and`, `or`, `set!`, `letrec`/`letrec*`, `let` nommé,
 `define-syntax`/`syntax-rules`/`let-syntax`, `delay`/`force`,
-`call-with-current-continuation`/`call/cc`, `dynamic-wind`.
+`call-with-current-continuation`/`call/cc`.
+
+`dynamic-wind` est implémenté comme une native, mais de façon limitée (voir
+section [Contrôle](#contrôle)).
 
 > `Env::set` existe déjà dans `types/core.rs` mais n'est câblé à aucune forme
 > spéciale : `set!` n'est donc pas utilisable pour l'instant.
@@ -84,6 +87,16 @@ Absents : `vector-map`, `vector-for-each`, `vector-copy`.
 Absents : `string-set!`, `string->list`, `string-ci=?` et comparaisons
 insensibles à la casse, `make-string`, `string-copy`, `string-fill!`.
 
+### Contrôle (`natives/control.rs`)
+
+`dynamic-wind` existe en version *downward-only* : `(dynamic-wind before thunk
+after)` appelle `before`, puis `thunk`, puis `after`, et retourne la valeur de
+`thunk`. Même si `thunk` lève une erreur, `after` est toujours exécuté avant de
+re-propager l'erreur.
+
+Limitation : sans `call/cc`, il n'y a pas de ré-entrance possible dans `thunk`
+après l'exécution de `after` (pas de continuation capturable et invocable).
+
 ### Entrées/sorties (`natives/io.rs`)
 
 `display` `newline` `write-char` `write-string` `read-char` `peek-char`
@@ -129,7 +142,8 @@ Pas de nombres complexes.
 - Pas de tail-call optimization : `eval`/`apply_lambda` sont des appels Rust
   récursifs classiques → risque de stack overflow sur boucles récursives
   profondes (pas de trampoline).
-- Pas de continuations (`call/cc`), pas de `dynamic-wind`.
+- Pas de continuations (`call/cc`). `dynamic-wind` est présent mais en version
+  *downward-only* (pas de ré-entrance possible).
 - Pas de macros hygiéniques.
 - Pas de forme `begin` autonome, mais les corps de `lambda`, `let`,
   `let*` et `do` évaluent leurs expressions en séquence et retournent la
@@ -147,6 +161,8 @@ Pas de nombres complexes.
   `vector-ref`, `vector-set!`, `vector->list`, `list->vector`, `vector-fill!`
 - `string_tests.rs` : `string?`, `string-length`, `string-ref`, `string=?`,
   `substring`, `string-append`, `list->string`
+- `control_tests.rs` : `dynamic-wind` (ordre d'exécution, `after` en cas
+  d'erreur du thunk, arité).
 - `io_tests.rs` : `display`, `newline`, `write-char`, `write-string`, ports
   de chaînes (`open-input-string`, `open-output-string`, `get-output-string`),
   `open-input-file`, `read-char`, `peek-char`, `read-line`, `char-ready?`,
