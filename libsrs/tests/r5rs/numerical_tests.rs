@@ -101,3 +101,55 @@ fn atan_of_one() {
         other => panic!("expected float, got {:?}", other),
     }
 }
+
+#[test]
+fn nan_true_for_nan_float() {
+    assert!(matches!(
+        eval_src("(nan? (/ 0.0 0.0))"),
+        SrsValue::Boolean(true)
+    ));
+}
+
+#[test]
+fn nan_false_for_ordinary_float() {
+    assert!(matches!(eval_src("(nan? 1.0)"), SrsValue::Boolean(false)));
+}
+
+#[test]
+fn nan_false_for_infinity() {
+    assert!(matches!(
+        eval_src("(nan? (/ 1.0 0.0))"),
+        SrsValue::Boolean(false)
+    ));
+}
+
+#[test]
+fn nan_false_for_integer() {
+    assert!(matches!(eval_src("(nan? 3)"), SrsValue::Boolean(false)));
+}
+
+#[test]
+fn finite_true_for_ordinary_float() {
+    assert!(matches!(eval_src("(finite? 1.0)"), SrsValue::Boolean(true)));
+}
+
+#[test]
+fn finite_true_for_integer() {
+    assert!(matches!(eval_src("(finite? 3)"), SrsValue::Boolean(true)));
+}
+
+#[test]
+fn finite_false_for_infinity() {
+    assert!(matches!(
+        eval_src("(finite? (/ 1.0 0.0))"),
+        SrsValue::Boolean(false)
+    ));
+}
+
+#[test]
+fn finite_false_for_nan() {
+    assert!(matches!(
+        eval_src("(finite? (/ 0.0 0.0))"),
+        SrsValue::Boolean(false)
+    ));
+}

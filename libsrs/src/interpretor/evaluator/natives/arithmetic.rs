@@ -110,6 +110,20 @@ pub(super) fn install(env: &Rc<Env>) {
             func: Rc::new(native_is_inexact),
         }),
     );
+    env.define(
+        "nan?".to_string(),
+        SrsValue::Native(Native {
+            name: "nan?",
+            func: Rc::new(native_is_nan),
+        }),
+    );
+    env.define(
+        "finite?".to_string(),
+        SrsValue::Native(Native {
+            name: "finite?",
+            func: Rc::new(native_is_finite),
+        }),
+    );
 }
 
 fn native_add(args: &[SrsValue]) -> Result<SrsValue, String> {
@@ -244,6 +258,30 @@ fn native_is_inexact(args: &[SrsValue]) -> Result<SrsValue, String> {
         [value] => Ok(SrsValue::Boolean(matches!(value, SrsValue::Float(_)))),
         [] => Err("not enough arguments to inexact?".to_string()),
         _ => Err("too many arguments to inexact?".to_string()),
+    }
+}
+
+/// `(nan? z)`: `#t` if `z` is a number and its `f64` value is NaN
+/// (`Integer`/`Rational` are never NaN, only `Float` can be). Not R5RS,
+/// added as a small extension (in the spirit of R7RS's `nan?`) so that
+/// pure-Scheme code can detect and filter non-numeric floating point
+/// results without any native support specific to a single use case.
+fn native_is_nan(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [value] => Ok(SrsValue::Boolean(numeric_to_f64(value)?.is_nan())),
+        [] => Err("not enough arguments to nan?".to_string()),
+        _ => Err("too many arguments to nan?".to_string()),
+    }
+}
+
+/// `(finite? z)`: `#t` if `z` is a number whose `f64` value is neither
+/// infinite nor NaN. `Integer`/`Rational` are always finite. Not R5RS,
+/// added as a small extension (in the spirit of R7RS's `finite?`).
+fn native_is_finite(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [value] => Ok(SrsValue::Boolean(numeric_to_f64(value)?.is_finite())),
+        [] => Err("not enough arguments to finite?".to_string()),
+        _ => Err("too many arguments to finite?".to_string()),
     }
 }
 

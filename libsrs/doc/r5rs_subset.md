@@ -39,7 +39,11 @@ Enregistrement central : `interpretor/evaluator/natives.rs::global_env()`.
 ### Arithmétique (`natives/arithmetic.rs`)
 
 `+` `-` `*` `/` `=` `<` `>` `<=` `>=` `max` `not`
-`exact->inexact` `inexact->exact` `exact?` `inexact?`
+`exact->inexact` `inexact->exact` `exact?` `inexact?` `nan?` `finite?`
+
+`nan?` et `finite?` ne sont pas R5RS (empruntées à R7RS) : elles testent la
+valeur `f64` sous-jacente d'un nombre (`Integer`/`Rational` ne sont jamais
+NaN ni infinis, seul `Float` peut l'être).
 
 Absents : `min`, `quotient`, `remainder`, `modulo`, `abs`, `zero?`,
 `positive?`, `negative?`, `odd?`, `even?`, `expt`, `sqrt`, `number?`,
