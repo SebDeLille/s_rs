@@ -59,6 +59,12 @@ enum DrawCommand {
         r: f64,
         color: Color,
     },
+    Point {
+        x: f64,
+        y: f64,
+        r: f64,
+        color: Color,
+    },
 }
 
 /// Shared canvas state: the commands recorded so far, the color used by
@@ -107,7 +113,7 @@ fn call_redraw_hook(state: &Rc<RefCell<CanvasState>>) {
 }
 
 /// Installs the graphics primitives (`clear-canvas`, `set-color`,
-/// `draw-line`, `draw-rect`, `draw-circle`) into `env`, wired to redraw
+/// `draw-line`, `draw-rect`, `draw-circle`, `draw-point`) into `env`, wired to redraw
 /// `drawing_area` via Cairo.
 pub fn install(env: &Rc<Env>, drawing_area: &DrawingArea) {
     let state = Rc::new(RefCell::new(CanvasState::new()));
@@ -156,6 +162,11 @@ pub fn install(env: &Rc<Env>, drawing_area: &DrawingArea) {
                         cr.set_source_rgb(color.r, color.g, color.b);
                         cr.arc(*x, *y, *r, 0.0, std::f64::consts::TAU);
                         let _ = cr.stroke();
+                    }
+                    DrawCommand::Point { x, y, r, color } => {
+                        cr.set_source_rgb(color.r, color.g, color.b);
+                        cr.arc(*x, *y, *r, 0.0, std::f64::consts::TAU);
+                        let _ = cr.fill();
                     }
                 }
             }
@@ -252,6 +263,28 @@ pub fn install(env: &Rc<Env>, drawing_area: &DrawingArea) {
                 .borrow_mut()
                 .commands
                 .push(DrawCommand::Circle { x, y, r, color });
+            drawing_area.queue_draw();
+            Ok(SrsValue::Unspecified)
+        }
+    });
+
+    define_native(env, "draw-point", {
+        let state = state.clone();
+        let drawing_area = drawing_area.clone();
+        move |args| {
+            let [x, y] = args else {
+                return Err("draw-point: expected 2 arguments (x y)".to_string());
+            };
+            let x = numeric_to_f64(x, "draw-point")?;
+            let y = numeric_to_f64(y, "draw-point")?;
+            const POINT_RADIUS: f64 = 2.0;
+            let color = state.borrow().current_color;
+            state.borrow_mut().commands.push(DrawCommand::Point {
+                x,
+                y,
+                r: POINT_RADIUS,
+                color,
+            });
             drawing_area.queue_draw();
             Ok(SrsValue::Unspecified)
         }

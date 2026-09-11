@@ -15,6 +15,7 @@ rendu.
 | `clear-canvas` | `()` | Vide la liste des commandes de dessin enregistrées |
 | `set-color` | `(r g b)` | Couleur courante pour les dessins suivants, composantes flottantes 0..1 |
 | `draw-line` | `(x1 y1 x2 y2)` | Trace une ligne |
+| `draw-point` | `(x y)` | Trace un point (disque plein de rayon fixe 2 px) |
 | `draw-rect` | `(x y w h)` | Trace un rectangle |
 | `draw-circle` | `(x y r)` | Trace un cercle |
 | `canvas-width` | `()` | Largeur courante du canvas (Integer) |
@@ -27,6 +28,7 @@ rendu.
 (set-color 1.0 0.0 0.0)
 (draw-rect 10 10 100 50)
 (draw-circle 200 200 40)
+(draw-point 50 50)
 ```
 
 ## Limitations connues
