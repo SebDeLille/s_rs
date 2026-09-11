@@ -28,6 +28,7 @@ pub(super) fn install(env: &Rc<Env>) {
             func: Rc::new(native_cdr),
         }),
     );
+    install_cxr(env);
     env.define(
         "apply".to_string(),
         SrsValue::Native(Native {
@@ -115,6 +116,75 @@ fn native_cdr(args: &[SrsValue]) -> Result<SrsValue, String> {
         [_] => Err("wrong type: expected pair".to_string()),
         [] => Err("not enough arguments to cdr".to_string()),
         _ => Err("too many arguments to cdr".to_string()),
+    }
+}
+
+type CxrOp = fn(SrsValue) -> Result<SrsValue, String>;
+
+/// Registers the R5RS composed pair accessors `caar`...`cddddr`.
+fn install_cxr(env: &Rc<Env>) {
+    // Right-to-left as in R5RS: each character from the right becomes car/cdr.
+    let cxrs: &[(&str, &[CxrOp])] = &[
+        ("caar", &[car, car]),
+        ("cadr", &[car, cdr]),
+        ("cdar", &[cdr, car]),
+        ("cddr", &[cdr, cdr]),
+        ("caaar", &[car, car, car]),
+        ("caadr", &[car, car, cdr]),
+        ("cadar", &[car, cdr, car]),
+        ("caddr", &[car, cdr, cdr]),
+        ("cdaar", &[cdr, car, car]),
+        ("cdadr", &[cdr, car, cdr]),
+        ("cddar", &[cdr, cdr, car]),
+        ("cdddr", &[cdr, cdr, cdr]),
+        ("caaaar", &[car, car, car, car]),
+        ("caaadr", &[car, car, car, cdr]),
+        ("caadar", &[car, car, cdr, car]),
+        ("caaddr", &[car, car, cdr, cdr]),
+        ("cadaar", &[car, cdr, car, car]),
+        ("cadadr", &[car, cdr, car, cdr]),
+        ("caddar", &[car, cdr, cdr, car]),
+        ("cadddr", &[car, cdr, cdr, cdr]),
+        ("cdaaar", &[cdr, car, car, car]),
+        ("cdaadr", &[cdr, car, car, cdr]),
+        ("cdadar", &[cdr, car, cdr, car]),
+        ("cdaddr", &[cdr, car, cdr, cdr]),
+        ("cddaar", &[cdr, cdr, car, car]),
+        ("cddadr", &[cdr, cdr, car, cdr]),
+        ("cdddar", &[cdr, cdr, cdr, car]),
+        ("cddddr", &[cdr, cdr, cdr, cdr]),
+    ];
+    for (name, ops) in cxrs {
+        let ops: Vec<CxrOp> = ops.to_vec();
+        env.define(
+            (*name).to_string(),
+            SrsValue::Native(Native {
+                name,
+                func: Rc::new(move |args| cxr_apply(name, args, &ops)),
+            }),
+        );
+    }
+}
+
+fn car(value: SrsValue) -> Result<SrsValue, String> {
+    match value {
+        SrsValue::Pair(cell) => Ok(cell.borrow().0.clone()),
+        _ => Err("wrong type: expected pair".to_string()),
+    }
+}
+
+fn cdr(value: SrsValue) -> Result<SrsValue, String> {
+    match value {
+        SrsValue::Pair(cell) => Ok(cell.borrow().1.clone()),
+        _ => Err("wrong type: expected pair".to_string()),
+    }
+}
+
+fn cxr_apply(name: &str, args: &[SrsValue], ops: &[CxrOp]) -> Result<SrsValue, String> {
+    match args {
+        [value] => ops.iter().rev().try_fold(value.clone(), |acc, op| op(acc)),
+        [] => Err(format!("not enough arguments to {}", name)),
+        _ => Err(format!("too many arguments to {}", name)),
     }
 }
 
