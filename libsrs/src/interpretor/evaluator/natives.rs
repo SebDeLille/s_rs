@@ -4,6 +4,7 @@ use std::rc::Rc;
 use crate::types::core::{Env, Native, PortData, SrsValue};
 
 mod arithmetic;
+mod control;
 mod io;
 mod pairs;
 mod strings;
@@ -35,6 +36,7 @@ pub fn global_env_with_frontend(frontend: &str) -> Rc<Env> {
     pairs::install(&env);
     vectors::install(&env);
     strings::install(&env);
+    control::install(&env);
     io::install(&env, stdin_port, stdout_port);
     install_frontend(&env, frontend);
     env
