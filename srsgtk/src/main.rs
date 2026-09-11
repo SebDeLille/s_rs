@@ -1,7 +1,7 @@
 use gtk4::prelude::*;
 use gtk4::{Application, ApplicationWindow, DrawingArea, Orientation, Paned};
 
-use libsrs::interpretor::evaluator::global_env;
+use libsrs::interpretor::evaluator::global_env_with_frontend;
 use libsrs::interpretor::repl::{EvalOutcome, eval_source};
 use libsrs::interpretor::startup::load_startup_scripts;
 
@@ -34,7 +34,7 @@ fn build_ui(app: &Application) {
     drawing_area.set_vexpand(true);
     drawing_area.set_hexpand(true);
 
-    let env = global_env();
+    let env = global_env_with_frontend("gtk");
     graphics::install(&env, &drawing_area);
     match eval_source(FUNCTION_SAMPLES_SCM, &env) {
         Ok(EvalOutcome::Done(_)) => {}

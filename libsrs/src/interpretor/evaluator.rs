@@ -12,7 +12,7 @@ mod util;
 #[cfg(test)]
 pub(crate) use special_forms::resolve_load_path_with_home;
 
-pub use natives::global_env;
+pub use natives::{global_env, global_env_with_frontend};
 
 /// The specific reason an [`EvalError`] was raised.
 #[derive(Debug, Clone, PartialEq)]

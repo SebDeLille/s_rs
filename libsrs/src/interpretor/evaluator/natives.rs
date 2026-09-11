@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::types::core::{Env, PortData, SrsValue};
+use crate::types::core::{Env, Native, PortData, SrsValue};
 
 mod arithmetic;
 mod io;
@@ -13,6 +13,12 @@ mod vectors;
 /// Builds a fresh global environment with the base arithmetic procedures
 /// (`+`, `-`, `*`, `/`) already bound.
 pub fn global_env() -> Rc<Env> {
+    global_env_with_frontend("unspecified")
+}
+
+/// Like [`global_env`], but records the hosting frontend name so that the
+/// Scheme procedure `(frontend)` returns it.
+pub fn global_env_with_frontend(frontend: &str) -> Rc<Env> {
     let env = Env::new(None);
     let stdin_port = Rc::new(RefCell::new(PortData::stdin()));
     let stdout_port = Rc::new(RefCell::new(PortData::stdout()));
@@ -30,7 +36,24 @@ pub fn global_env() -> Rc<Env> {
     vectors::install(&env);
     strings::install(&env);
     io::install(&env, stdin_port, stdout_port);
+    install_frontend(&env, frontend);
     env
+}
+
+fn install_frontend(env: &Rc<Env>, name: &str) {
+    let name = name.to_string();
+    env.define(
+        "frontend".to_string(),
+        SrsValue::Native(Native {
+            name: "frontend",
+            func: Rc::new(move |args| {
+                if !args.is_empty() {
+                    return Err("frontend: takes no arguments".to_string());
+                }
+                Ok(SrsValue::String(Rc::new(RefCell::new(name.clone()))))
+            }),
+        }),
+    );
 }
 
 /// Converts a numeric [`SrsValue`] to `f64`, as needed by the transcendental

@@ -22,6 +22,7 @@ pub(super) fn eval_combination(expr: &SrsValue, env: &Rc<Env>) -> Result<SrsValu
             "let" => return eval_let(&items[1..], env),
             "let*" => return eval_let_star(&items[1..], env),
             "do" => return eval_do(&items[1..], env),
+            "begin" => return eval_begin(&items[1..], env),
             "if" => return eval_if(&items[1..], env),
             "quote" => return eval_quote(&items[1..]),
             "quasiquote" => return eval_quasiquote(&items[1..], env),
@@ -239,6 +240,17 @@ fn eval_do(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
             }
         }
     }
+}
+
+/// Handles `(begin <expr>...)`, evaluating each expression in the current
+/// environment in order and returning the value of the last one (or
+/// [`SrsValue::Unspecified`] if there are none).
+fn eval_begin(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
+    let mut result = SrsValue::Unspecified;
+    for expr in args {
+        result = eval(expr, env)?;
+    }
+    Ok(result)
 }
 
 /// Handles `(if <test> <conseq> [<alt>])`. Per R5RS, any value other than

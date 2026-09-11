@@ -24,6 +24,52 @@ fn ok(src: &str) -> SrsValue {
 }
 
 #[test]
+fn begin_returns_last_value() {
+    assert!(matches!(
+        ok("(begin 1 2 3)"),
+        SrsValue::Integer(3)
+    ));
+}
+
+#[test]
+fn begin_with_local_bindings() {
+    assert!(matches!(
+        ok("(define x 0) (begin (define y 5) (+ x y))"),
+        SrsValue::Integer(5)
+    ));
+}
+
+#[test]
+fn begin_effects_happen_in_order() {
+    assert!(matches!(
+        ok("(define counter 0) (begin (display counter) (define counter 1) counter)"),
+        SrsValue::Integer(1)
+    ));
+}
+
+#[test]
+fn begin_single_expr_returns_its_value() {
+    assert!(matches!(ok("(begin 42)"), SrsValue::Integer(42)));
+}
+
+#[test]
+fn begin_empty_is_unspecified() {
+    assert!(matches!(ok("(begin)"), SrsValue::Unspecified));
+}
+
+#[test]
+fn frontend_defaults_to_unspecified() {
+    let values = read_all(get_lexemes("(frontend)").unwrap()).unwrap();
+    let env = global_env();
+    let result = eval(&values[0], &env).unwrap();
+    assert!(matches!(result, SrsValue::String(ref s) if s.borrow().as_str() == "unspecified"));
+}
+
+#[test]
+fn frontend_arg_fails() {
+    assert!(eval_src("(frontend 1)").is_err());
+}
+
 fn integer_is_self_evaluating() {
     assert!(matches!(ok("42"), SrsValue::Integer(42)));
 }
