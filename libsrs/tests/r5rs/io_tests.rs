@@ -502,3 +502,45 @@ fn close_input_port_closes_pipe_port() {
     "#;
     assert!(boolean_value(eval_src(src)));
 }
+
+#[test]
+fn close_pipe_returns_zero_on_success() {
+    let src = r#"
+        (let ((p (open-input-pipe "exit 0")))
+          (close-pipe p))
+    "#;
+    match eval_src(src) {
+        SrsValue::Integer(n) => assert_eq!(n, 0),
+        other => panic!("expected integer, got {}", other),
+    }
+}
+
+#[test]
+fn close_pipe_returns_non_zero_exit_code() {
+    let src = r#"
+        (let ((p (open-input-pipe "exit 3")))
+          (close-pipe p))
+    "#;
+    match eval_src(src) {
+        SrsValue::Integer(n) => assert_eq!(n, 3),
+        other => panic!("expected integer, got {}", other),
+    }
+}
+
+#[test]
+fn close_pipe_rejects_non_pipe_port() {
+    assert!(eval_all("(close-pipe (open-input-string \"x\"))").is_err());
+    assert!(eval_all("(close-pipe (current-output-port))").is_err());
+}
+
+#[test]
+fn close_pipe_rejects_non_port_argument() {
+    assert!(eval_all("(close-pipe 42)").is_err());
+    assert!(eval_all("(close-pipe \"x\")").is_err());
+}
+
+#[test]
+fn close_pipe_arity() {
+    assert!(eval_all("(close-pipe)").is_err());
+    assert!(eval_all("(close-pipe (open-input-pipe \"echo\") 2)").is_err());
+}

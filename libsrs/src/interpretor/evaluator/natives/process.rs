@@ -39,6 +39,13 @@ pub(super) fn install(env: &Rc<Env>) {
             func: Rc::new(native_open_input_pipe),
         }),
     );
+    env.define(
+        "close-pipe".to_string(),
+        SrsValue::Native(Native {
+            name: "close-pipe",
+            func: Rc::new(native_close_pipe),
+        }),
+    );
 }
 
 /// `(process-installed?)`: native trivial permettant de valider le
@@ -143,6 +150,26 @@ fn native_open_input_pipe(args: &[SrsValue]) -> Result<SrsValue, String> {
             Err("wrong type: expected string to open-input-pipe".to_string())
         }
         _ => Err("too many arguments to open-input-pipe".to_string()),
+    }
+}
+
+/// `(close-pipe port)`: ferme un port de pipe et attend le processus fils.
+///
+/// Retourne le code de sortie du processus, ou `-1` s'il a été tué par un
+/// signal.
+fn native_close_pipe(args: &[SrsValue]) -> Result<SrsValue, String> {
+    if args.is_empty() {
+        return Err("not enough arguments to close-pipe".to_string());
+    }
+    if args.len() > 1 {
+        return Err("too many arguments to close-pipe".to_string());
+    }
+    match &args[0] {
+        SrsValue::Port(p) => match p.borrow_mut().close_pipe() {
+            Some(status) => Ok(exit_status_to_integer(status)),
+            None => Err("wrong type: expected pipe port to close-pipe".to_string()),
+        },
+        _ => Err("wrong type: expected pipe port to close-pipe".to_string()),
     }
 }
 
@@ -402,5 +429,66 @@ mod tests {
         let b = SrsValue::String(Rc::new(std::cell::RefCell::new("hello".to_string())));
         let err = native_open_input_pipe(&[a, b]).unwrap_err();
         assert_eq!(err, "too many arguments to open-input-pipe");
+    }
+
+    #[test]
+    fn close_pipe_returns_zero_on_success() {
+        let port = native_open_input_pipe(&[SrsValue::String(Rc::new(std::cell::RefCell::new(
+            "exit 0".to_string(),
+        )))])
+        .unwrap();
+        let result = native_close_pipe(std::slice::from_ref(&port)).unwrap();
+        assert!(matches!(result, SrsValue::Integer(0)));
+    }
+
+    #[test]
+    fn close_pipe_returns_non_zero_exit_code() {
+        let port = native_open_input_pipe(&[SrsValue::String(Rc::new(std::cell::RefCell::new(
+            "exit 5".to_string(),
+        )))])
+        .unwrap();
+        let result = native_close_pipe(std::slice::from_ref(&port)).unwrap();
+        assert!(matches!(result, SrsValue::Integer(5)));
+    }
+
+    #[test]
+    fn close_pipe_rejects_non_port_argument() {
+        let err = native_close_pipe(&[SrsValue::Integer(42)]).unwrap_err();
+        assert_eq!(err, "wrong type: expected pipe port to close-pipe");
+    }
+
+    #[test]
+    fn close_pipe_rejects_no_arguments() {
+        let err = native_close_pipe(&[]).unwrap_err();
+        assert_eq!(err, "not enough arguments to close-pipe");
+    }
+
+    #[test]
+    fn close_pipe_rejects_too_many_arguments() {
+        let port = native_open_input_pipe(&[SrsValue::String(Rc::new(std::cell::RefCell::new(
+            "echo".to_string(),
+        )))])
+        .unwrap();
+        let err = native_close_pipe(&[port.clone(), port]).unwrap_err();
+        assert_eq!(err, "too many arguments to close-pipe");
+    }
+
+    #[test]
+    fn close_pipe_rejects_non_pipe_input_port() {
+        let file_port = SrsValue::Port(Rc::new(std::cell::RefCell::new(PortData::InputFile {
+            reader: std::io::BufReader::new(Box::new(std::io::empty())),
+            peeked: None,
+        })));
+        let err = native_close_pipe(&[file_port]).unwrap_err();
+        assert_eq!(err, "wrong type: expected pipe port to close-pipe");
+    }
+
+    #[test]
+    fn close_pipe_rejects_output_port() {
+        let output_port = SrsValue::Port(Rc::new(std::cell::RefCell::new(PortData::OutputString(
+            String::new(),
+        ))));
+        let err = native_close_pipe(&[output_port]).unwrap_err();
+        assert_eq!(err, "wrong type: expected pipe port to close-pipe");
     }
 }
