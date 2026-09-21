@@ -1,7 +1,16 @@
 # AGENTS.md
 
 Minimal Scheme (R5RS subset) interpreter in Rust. Cargo workspace, no external
-runtime dependencies.
+runtime dependencies except for the GTK4 system libraries required by the
+optional `srsgtk` crate.
+
+## Crates
+
+- `libsrs` — core interpreter library (lexer, reader, evaluator, types,
+  startup-script loader).
+- `srs` — command-line REPL built on `libsrs`.
+- `srsgtk` — GTK4 graphical frontend with a drawing canvas and an integrated
+  REPL.
 
 ## Contributing
 

@@ -22,7 +22,7 @@ Dispatch dans `interpretor/evaluator/special_forms.rs::eval_combination`.
 
 ### Non implémentées
 
-`begin`, `cond`, `case`, `and`, `or`, `set!`, `letrec`/`letrec*`, `let` nommé,
+`cond`, `case`, `and`, `or`, `set!`, `letrec`/`letrec*`, `let` nommé,
 `define-syntax`/`syntax-rules`/`let-syntax`, `delay`/`force`,
 `call-with-current-continuation`/`call/cc`.
 
@@ -53,6 +53,13 @@ Absents : `min`, `quotient`, `remainder`, `modulo`, `abs`, `zero?`,
 `integer?`, `gcd`, `lcm`, `floor`, `ceiling`, `round`, `truncate`,
 `numerator`, `denominator`.
 
+### Processus (`natives/process.rs`)
+
+`process-installed?` `exit` `system` `system*`
+
+Il s'agit d'extensions non-R5RS : `exit` est inspirée de R7RS, tandis que
+`system`/`system*` permettent d'exécuter des commandes externes.
+
 ### Trigonométrie (`natives/trig.rs`)
 
 `sin` `cos` `tan` `atan` (1 argument seulement)
@@ -62,15 +69,16 @@ Absents : `atan` à 2 arguments, `exp`, `log`.
 ### Paires et listes (`natives/pairs.rs`)
 
 `cons` `car` `cdr` `apply` `map` `length` `null?` `eq?` `list` `reverse`
-`pair?`
+`list-ref` `pair?` ainsi que les accesseurs composés R5RS `caar` … `cddddr`
+(28 noms).
 
 `eq?` compare l'identité des objets mutables (`Rc::ptr_eq`), et les
 valeurs atomiques par valeur (deux nombres égaux comptent comme
 égaux pour `eq?`, conformément à R5RS).
 
-Absents : `list?`, `set-car!`, `set-cdr!`, `append`, `list-ref`,
-`list-tail`, `memq`/`memv`/`member`, `assq`/`assv`/`assoc`,
-`for-each`, `caar`/`cadr`/..., `eqv?`/`equal?`.
+Absents : `list?`, `set-car!`, `set-cdr!`, `append`, `list-tail`,
+`memq`/`memv`/`member`, `assq`/`assv`/`assoc`, `for-each`,
+`eqv?`/`equal?`.
 
 ### Vecteurs (`natives/vectors.rs`)
 
@@ -82,7 +90,7 @@ Absents : `vector-map`, `vector-for-each`, `vector-copy`.
 ### Chaînes (`natives/strings.rs`)
 
 `string?` `string-length` `string-ref` `string=?` `substring` `string-append`
-`list->string`
+`list->string` `char=?`
 
 Absents : `string-set!`, `string->list`, `string-ci=?` et comparaisons
 insensibles à la casse, `make-string`, `string-copy`, `string-fill!`.
@@ -145,9 +153,9 @@ Pas de nombres complexes.
 - Pas de continuations (`call/cc`). `dynamic-wind` est présent mais en version
   *downward-only* (pas de ré-entrance possible).
 - Pas de macros hygiéniques.
-- Pas de forme `begin` autonome, mais les corps de `lambda`, `let`,
-  `let*` et `do` évaluent leurs expressions en séquence et retournent la
-  dernière valeur (comportement équivalent à un `begin` implicite).
+- La forme `begin` est disponible et évalue ses expressions en séquence ;
+  les corps de `lambda`, `let`, `let*` et `do` ont le même comportement
+  (équivalent à un `begin` implicite).
 
 ## Périmètre couvert par les tests
 
@@ -155,12 +163,12 @@ Pas de nombres complexes.
 
 - `numerical_tests.rs` : `+`, `*`, `sin`/`cos`/`tan`/`atan`
 - `pair_tests.rs` : `cons`, `car`, `cdr`, `length`, `null?`, `list`,
-  `reverse`, `pair?`
-- `procedure_tests.rs` : `lambda`, application, `let`, `let*`
+  `reverse`, `list-ref`, `pair?`, accesseurs composés `caar` … `cddddr`
+- `procedure_tests.rs` : `lambda`, application, `let`, `let*`, `begin`
 - `vector_tests.rs` : `vector`, `vector?`, `make-vector`, `vector-length`,
   `vector-ref`, `vector-set!`, `vector->list`, `list->vector`, `vector-fill!`
 - `string_tests.rs` : `string?`, `string-length`, `string-ref`, `string=?`,
-  `substring`, `string-append`, `list->string`
+  `substring`, `string-append`, `list->string`, `char=?`
 - `control_tests.rs` : `dynamic-wind` (ordre d'exécution, `after` en cas
   d'erreur du thunk, arité).
 - `io_tests.rs` : `display`, `newline`, `write-char`, `write-string`, ports

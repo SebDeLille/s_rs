@@ -9,8 +9,8 @@ runtime externe. Le projet est organisé en workspace Cargo.
   lexicale, lecteur, évaluateur, types Scheme, scripts de démarrage).
 - [`srs`](srs/README.md) : REPL en ligne de commande construit sur
   `libsrs`.
-- [`srsgtk`](srsgtk/README.md) : interface graphique GTK4 (encore un
-  skeleton, sans logique Scheme branchée).
+- [`srsgtk`](srsgtk/README.md) : interface graphique GTK4 branchée sur
+  `libsrs` (canvas de dessin via Cairo et REPL intégré).
 
 ## Démarrage rapide
 
@@ -26,9 +26,10 @@ cargo test -p libsrs
 ```
 
 `srs` charge automatiquement les fichiers `*.scm` présents dans
-`$HOME/.config/srs/` puis dans `.srs/` du répertoire courant au démarrage.
-Voir [`libsrs/src/interpretor/startup.rs`](libsrs/src/interpretor/startup.rs)
-pour les détails.
+`$HOME/.config/srs/startup/` puis dans `.srs/startup/` du répertoire courant
+au démarrage. `srsgtk` charge également ces scripts après son prélude Scheme
+(voir [`srsgtk/src/main.rs`](srsgtk/src/main.rs)). Pour les détails du
+mécanisme, voir [`libsrs/src/interpretor/startup.rs`](libsrs/src/interpretor/startup.rs).
 
 `srsgtk` nécessite les bibliothèques de développement GTK4 installées sur le
 système ; voir [`srsgtk/README.md`](srsgtk/README.md) pour les prérequis par
