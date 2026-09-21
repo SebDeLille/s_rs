@@ -333,7 +333,9 @@ fn native_char_ready_p(
 ) -> Result<SrsValue, String> {
     let port = input_port_from_args("char-ready?", args, stdin_port)?;
     let ready = match &*port.borrow() {
-        PortData::InputStdin { .. } | PortData::InputFile { .. } => true,
+        PortData::InputStdin { .. } | PortData::InputFile { .. } | PortData::InputPipe { .. } => {
+            true
+        }
         PortData::InputString(chars, pos) => *pos < chars.len(),
         _ => false,
     };

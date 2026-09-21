@@ -244,13 +244,24 @@ impl PortData {
 
     /// Closes an input port, releasing its underlying resources.
     ///
-    /// File and stdin ports are replaced by an empty reader so the OS handle
-    /// is dropped; string ports are drained. Subsequent reads return EOF.
+    /// File, pipe and stdin ports are replaced by an empty reader so the OS
+    /// handle is dropped and any child process is reaped; string ports are
+    /// drained. Subsequent reads return EOF.
     pub fn close(&mut self) {
         match self {
             PortData::InputStdin { reader, peeked } | PortData::InputFile { reader, peeked } => {
                 *reader = BufReader::new(Box::new(std::io::empty()));
                 *peeked = None;
+            }
+            PortData::InputPipe {
+                reader,
+                peeked,
+                child,
+            } => {
+                *reader = BufReader::new(Box::new(std::io::empty()));
+                *peeked = None;
+                let _ = child.kill();
+                let _ = child.wait();
             }
             PortData::InputString(chars, pos) => {
                 chars.clear();
@@ -301,7 +312,9 @@ impl PortData {
     /// [`SrsValue::Eof`] at end of file.
     pub fn read_char(&mut self) -> Result<SrsValue, String> {
         match self {
-            PortData::InputStdin { reader, peeked } | PortData::InputFile { reader, peeked } => {
+            PortData::InputStdin { reader, peeked }
+            | PortData::InputFile { reader, peeked }
+            | PortData::InputPipe { reader, peeked, .. } => {
                 Self::take_or_read_peeked(reader, peeked, true)
                     .map(|opt| opt.map(SrsValue::Character).unwrap_or(SrsValue::Eof))
             }
@@ -323,7 +336,9 @@ impl PortData {
     /// returning [`SrsValue::Eof`] at end of file.
     pub fn peek_char(&mut self) -> Result<SrsValue, String> {
         match self {
-            PortData::InputStdin { reader, peeked } | PortData::InputFile { reader, peeked } => {
+            PortData::InputStdin { reader, peeked }
+            | PortData::InputFile { reader, peeked }
+            | PortData::InputPipe { reader, peeked, .. } => {
                 let c = Self::take_or_read_peeked(reader, peeked, false)?;
                 if peeked.is_none() {
                     *peeked = c;
@@ -347,7 +362,10 @@ impl PortData {
     pub fn is_input_port(&self) -> bool {
         matches!(
             self,
-            PortData::InputStdin { .. } | PortData::InputFile { .. } | PortData::InputString(..)
+            PortData::InputStdin { .. }
+                | PortData::InputFile { .. }
+                | PortData::InputPipe { .. }
+                | PortData::InputString(..)
         )
     }
 
@@ -361,7 +379,9 @@ impl PortData {
     /// yields EOF, returns [`SrsValue::Eof`].
     pub fn read_line(&mut self) -> Result<SrsValue, String> {
         match self {
-            PortData::InputStdin { reader, peeked } | PortData::InputFile { reader, peeked } => {
+            PortData::InputStdin { reader, peeked }
+            | PortData::InputFile { reader, peeked }
+            | PortData::InputPipe { reader, peeked, .. } => {
                 let mut buf = String::new();
                 loop {
                     let c = Self::take_or_read_peeked(reader, peeked, true);
@@ -530,6 +550,12 @@ pub enum PortData {
     InputString(Vec<char>, usize),
     /// Output port accumulating characters into a string.
     OutputString(String),
+    /// Pipe input connected to the stdout of a child process.
+    InputPipe {
+        reader: BufReader<Box<dyn Read>>,
+        peeked: Option<char>,
+        child: std::process::Child,
+    },
 }
 
 impl fmt::Debug for PortData {
@@ -549,6 +575,9 @@ impl fmt::Debug for PortData {
                 .field(pos)
                 .finish(),
             PortData::OutputString(buf) => f.debug_tuple("OutputString").field(buf).finish(),
+            PortData::InputPipe { peeked, .. } => {
+                f.debug_struct("InputPipe").field("peeked", peeked).finish()
+            }
         }
     }
 }
@@ -729,5 +758,43 @@ mod tests {
         assert!(port.get_output_string().is_err());
         let port = PortData::input_string("x");
         assert!(port.get_output_string().is_err());
+    }
+
+    #[test]
+    fn input_pipe_reads_from_child_stdout_and_closes() {
+        let mut child = std::process::Command::new("sh")
+            .arg("-c")
+            .arg("printf 'hello\\nworld'")
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .expect("failed to spawn test process");
+        let stdout = child.stdout.take().expect("no stdout");
+        let mut port = PortData::InputPipe {
+            reader: BufReader::new(Box::new(stdout)),
+            peeked: None,
+            child,
+        };
+
+        assert!(port.is_input_port());
+        assert!(!port.is_output_port());
+
+        let first = port.read_line().unwrap();
+        assert!(matches!(first, SrsValue::String(s) if s.borrow().as_str() == "hello"));
+
+        assert!(matches!(
+            port.read_char().unwrap(),
+            SrsValue::Character('w')
+        ));
+        assert!(matches!(
+            port.peek_char().unwrap(),
+            SrsValue::Character('o')
+        ));
+        assert!(matches!(
+            port.read_char().unwrap(),
+            SrsValue::Character('o')
+        ));
+
+        port.close();
+        assert!(matches!(port.read_char().unwrap(), SrsValue::Eof));
     }
 }
