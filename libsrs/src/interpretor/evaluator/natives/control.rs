@@ -28,7 +28,7 @@ pub(super) fn install(env: &Rc<Env>) {
 fn native_dynamic_wind(args: &[SrsValue]) -> Result<SrsValue, String> {
     let [before, thunk, after] = args else {
         return Err(match args.len() {
-            0 | 1 | 2 => "not enough arguments to dynamic-wind".to_string(),
+            0..=2 => "not enough arguments to dynamic-wind".to_string(),
             _ => "too many arguments to dynamic-wind".to_string(),
         });
     };

@@ -25,10 +25,7 @@ fn ok(src: &str) -> SrsValue {
 
 #[test]
 fn begin_returns_last_value() {
-    assert!(matches!(
-        ok("(begin 1 2 3)"),
-        SrsValue::Integer(3)
-    ));
+    assert!(matches!(ok("(begin 1 2 3)"), SrsValue::Integer(3)));
 }
 
 #[test]
@@ -70,6 +67,7 @@ fn frontend_arg_fails() {
     assert!(eval_src("(frontend 1)").is_err());
 }
 
+#[test]
 fn integer_is_self_evaluating() {
     assert!(matches!(ok("42"), SrsValue::Integer(42)));
 }
