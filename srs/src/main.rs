@@ -1,3 +1,4 @@
+use std::env;
 use std::io::{self, Write};
 use std::process;
 use std::rc::Rc;
@@ -8,9 +9,48 @@ use libsrs::interpretor::startup::load_startup_scripts;
 use libsrs::types::core::{Env, SrsValue};
 
 fn main() {
-    println!("srs REPL - Ctrl+D pour quitter");
     let env = global_env_with_frontend("cli");
     load_startup_scripts(&env);
+
+    let args: Vec<String> = env::args().skip(1).collect();
+    if let Some(path) = args.first() {
+        run_file(path, &env);
+        return;
+    }
+
+    run_repl(&env);
+}
+
+/// Reads and evaluates the given source file, then exits.
+fn run_file(path: &str, env: &Rc<Env>) {
+    let source = match std::fs::read_to_string(path) {
+        Ok(source) => source,
+        Err(e) => {
+            eprintln!("erreur: {}: {}", path, e);
+            process::exit(1);
+        }
+    };
+
+    match eval_source(&source, env) {
+        Ok(EvalOutcome::Done(_)) => {}
+        Ok(EvalOutcome::Incomplete) => {
+            eprintln!("erreur: {}: unexpected end of input", path);
+            process::exit(1);
+        }
+        Err(EvalError {
+            kind: EvalErrorKind::Exit(code),
+        }) => {
+            process::exit(code);
+        }
+        Err(e) => {
+            eprintln!("erreur: {}: {}", path, e);
+            process::exit(1);
+        }
+    }
+}
+
+fn run_repl(env: &Rc<Env>) {
+    println!("srs REPL - Ctrl+D pour quitter");
     let stdin = io::stdin();
     let mut input = String::new();
 
