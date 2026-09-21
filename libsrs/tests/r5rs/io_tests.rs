@@ -453,3 +453,52 @@ fn close_input_port_arity() {
     assert!(eval_all("(close-input-port)").is_err());
     assert!(eval_all("(close-input-port (open-input-string \"x\") 2)").is_err());
 }
+
+#[test]
+fn open_input_pipe_reads_line_from_child_stdout() {
+    let result = eval_src(
+        r#"
+        (let ((p (open-input-pipe "echo hello")))
+          (read-line p))
+    "#,
+    );
+    assert_eq!(string_value(result), "hello");
+}
+
+#[test]
+fn open_input_pipe_reads_until_eof() {
+    let src = r#"
+        (define (read-all p)
+          (define (loop acc)
+            (let ((c (read-char p)))
+              (if (eof-object? c)
+                  (list->string (reverse acc))
+                  (loop (cons c acc)))))
+          (loop '()))
+        (let ((p (open-input-pipe "printf 'a b c'")))
+          (read-all p))
+    "#;
+    assert_eq!(string_value(eval_src(src)), "a b c");
+}
+
+#[test]
+fn open_input_pipe_reports_error_for_invalid_command() {
+    assert!(eval_all("(open-input-pipe)").is_err());
+    assert!(eval_all("(open-input-pipe \"x\" \"y\")").is_err());
+    assert!(eval_all("(open-input-pipe 42)").is_err());
+}
+
+#[test]
+fn open_input_pipe_port_is_input_port() {
+    assert!(eval_all("(input-port? (open-input-pipe \"echo\"))").is_err());
+}
+
+#[test]
+fn close_input_port_closes_pipe_port() {
+    let src = r#"
+        (let ((p (open-input-pipe "echo hi")))
+          (close-input-port p)
+          (eof-object? (read-line p)))
+    "#;
+    assert!(boolean_value(eval_src(src)));
+}

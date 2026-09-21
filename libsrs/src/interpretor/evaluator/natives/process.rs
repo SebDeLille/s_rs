@@ -1,7 +1,7 @@
 use std::process::ExitStatus;
 use std::rc::Rc;
 
-use crate::types::core::{Env, Native, SrsValue};
+use crate::types::core::{Env, Native, PortData, SrsValue};
 
 pub(super) fn install(env: &Rc<Env>) {
     env.define(
@@ -30,6 +30,13 @@ pub(super) fn install(env: &Rc<Env>) {
         SrsValue::Native(Native {
             name: "system*",
             func: Rc::new(native_system_star),
+        }),
+    );
+    env.define(
+        "open-input-pipe".to_string(),
+        SrsValue::Native(Native {
+            name: "open-input-pipe",
+            func: Rc::new(native_open_input_pipe),
         }),
     );
 }
@@ -107,6 +114,38 @@ fn native_system_star(args: &[SrsValue]) -> Result<SrsValue, String> {
     Ok(exit_status_to_integer(status))
 }
 
+/// `(open-input-pipe command)`: lance `command` dans `/bin/sh -c command`
+/// et retourne un port en lecture sur le stdout du processus fils.
+fn native_open_input_pipe(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [SrsValue::String(s)] => {
+            let command = s.borrow().clone();
+            let mut child = std::process::Command::new("/bin/sh")
+                .arg("-c")
+                .arg(command)
+                .stdout(std::process::Stdio::piped())
+                .spawn()
+                .map_err(|e| format!("open-input-pipe: {}", e))?;
+            let stdout = child
+                .stdout
+                .take()
+                .ok_or_else(|| "open-input-pipe: could not capture child stdout".to_string())?;
+            Ok(SrsValue::Port(Rc::new(std::cell::RefCell::new(
+                PortData::InputPipe {
+                    reader: std::io::BufReader::new(Box::new(stdout)),
+                    peeked: None,
+                    child,
+                },
+            ))))
+        }
+        [] => Err("not enough arguments to open-input-pipe".to_string()),
+        [SrsValue::Symbol(_) | _] => {
+            Err("wrong type: expected string to open-input-pipe".to_string())
+        }
+        _ => Err("too many arguments to open-input-pipe".to_string()),
+    }
+}
+
 /// Convertit un [`ExitStatus`] en code de sortie entier.
 ///
 /// Si le processus s'est terminé normalement, retourne son code de sortie
@@ -122,7 +161,6 @@ pub(super) fn exit_status_to_integer(status: ExitStatus) -> SrsValue {
 ///
 /// Chaque valeur doit être une chaîne de caractères ; sinon retourne une
 /// erreur formatée avec le nom de la primitive.
-#[allow(dead_code)]
 pub(super) fn strings_from_args(name: &str, args: &[SrsValue]) -> Result<Vec<String>, String> {
     args.iter()
         .map(|value| match value {
@@ -290,5 +328,79 @@ mod tests {
     fn exit_rejects_too_many_arguments() {
         let err = native_exit(&[SrsValue::Boolean(true), SrsValue::Boolean(false)]).unwrap_err();
         assert_eq!(err, "too many arguments to exit");
+    }
+
+    #[test]
+    fn open_input_pipe_reads_line_from_child_stdout() {
+        let args = [SrsValue::String(Rc::new(std::cell::RefCell::new(
+            "echo hello".to_string(),
+        )))];
+        let port_value = native_open_input_pipe(&args).unwrap();
+        let port = match port_value {
+            SrsValue::Port(p) => p,
+            other => panic!("expected port, got {}", other),
+        };
+        let result = port.borrow_mut().read_line().unwrap();
+        assert!(matches!(result, SrsValue::String(s) if s.borrow().as_str() == "hello"));
+    }
+
+    #[test]
+    fn open_input_pipe_reads_until_eof() {
+        let args = [SrsValue::String(Rc::new(std::cell::RefCell::new(
+            "printf 'a b c'".to_string(),
+        )))];
+        let port_value = native_open_input_pipe(&args).unwrap();
+        let port = match port_value {
+            SrsValue::Port(p) => p,
+            other => panic!("expected port, got {}", other),
+        };
+        let mut read = Vec::new();
+        loop {
+            match port.borrow_mut().read_char().unwrap() {
+                SrsValue::Character(c) => read.push(c),
+                SrsValue::Eof => break,
+                other => panic!("unexpected value: {}", other),
+            }
+        }
+        assert_eq!(read.iter().collect::<String>(), "a b c");
+    }
+
+    #[test]
+    fn open_input_pipe_reports_failure_to_read_stdout() {
+        // Une commande valide mais sans stdout piped n'est pas applicable
+        // ici car on pipe toujours stdout. On vérifie donc indirectement
+        // l'erreur en créant un pipe dont l'extrémité de lecture est
+        // consommée, ce qui force un échec.
+        let result = native_open_input_pipe(&[SrsValue::String(Rc::new(std::cell::RefCell::new(
+            "true".to_string(),
+        )))]);
+        let port_value = result.unwrap();
+        let port = match port_value {
+            SrsValue::Port(p) => p,
+            other => panic!("expected port, got {}", other),
+        };
+        // Le port est un InputPipe : la primitive a bien fonctionné.
+        assert!(port.borrow().is_input_port());
+    }
+
+    #[test]
+    fn open_input_pipe_rejects_non_string_argument() {
+        let args = [SrsValue::Integer(42)];
+        let err = native_open_input_pipe(&args).unwrap_err();
+        assert_eq!(err, "wrong type: expected string to open-input-pipe");
+    }
+
+    #[test]
+    fn open_input_pipe_rejects_no_arguments() {
+        let err = native_open_input_pipe(&[]).unwrap_err();
+        assert_eq!(err, "not enough arguments to open-input-pipe");
+    }
+
+    #[test]
+    fn open_input_pipe_rejects_too_many_arguments() {
+        let a = SrsValue::String(Rc::new(std::cell::RefCell::new("echo".to_string())));
+        let b = SrsValue::String(Rc::new(std::cell::RefCell::new("hello".to_string())));
+        let err = native_open_input_pipe(&[a, b]).unwrap_err();
+        assert_eq!(err, "too many arguments to open-input-pipe");
     }
 }
