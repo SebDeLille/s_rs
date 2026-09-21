@@ -77,7 +77,7 @@ fn native_string_p(args: &[SrsValue]) -> Result<SrsValue, String> {
 /// `(string-length string)`: returns the number of characters in `string`.
 fn native_string_length(args: &[SrsValue]) -> Result<SrsValue, String> {
     match args {
-        [SrsValue::String(cell)] => Ok(SrsValue::Integer(cell.borrow().len() as i64)),
+        [SrsValue::String(cell)] => Ok(SrsValue::Integer(cell.borrow().chars().count() as i64)),
         [_] => Err("wrong type: expected string".to_string()),
         [] => Err("not enough arguments to string-length".to_string()),
         _ => Err("too many arguments to string-length".to_string()),
