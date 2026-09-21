@@ -21,7 +21,7 @@
 (define csv-call-with-file
   (lambda (path delimiter callback)
     "Open PATH as a streaming CSV, parse the header once, then call CALLBACK
-with (NEXT-ROW HEADER). NEXT-ROW returns the next parsed row as a list of
+with (HEADER NEXT-ROW). NEXT-ROW returns the next parsed row as a list of
 field strings, or '() at EOF. The input port is closed on normal return or
 if CALLBACK raises an error."
     (let ((port (open-input-file path)))
@@ -36,7 +36,7 @@ if CALLBACK raises an error."
       (let ((header (next-row)))
         (dynamic-wind
           (lambda () 'ok)
-          (lambda () (callback next-row header))
+          (lambda () (callback header next-row))
           (lambda () (close-input-port port)))))))
 
 (define csv-for-each-row
@@ -46,7 +46,7 @@ ROW-FN with (HEADER ROW). The file is read lazily, one line at a time."
     (csv-call-with-file
       path
       delimiter
-      (lambda (next-row header)
+      (lambda (header next-row)
         (define first-row (next-row))
         (do ((row first-row (next-row)))
             ((null? row) 'done)
@@ -58,7 +58,7 @@ ROW-FN with (HEADER ROW). The file is read lazily, one line at a time."
     (csv-call-with-file
       path
       delimiter
-      (lambda (next-row header)
+      (lambda (header next-row)
         (define collect
           (lambda (acc)
             (let ((row (next-row)))

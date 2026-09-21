@@ -158,7 +158,7 @@ fn csv_call_with_file_propagates_callback_error() {
     );
     let lib = csv_lib_path();
     let src = format!(
-        "(load \"{}\")\n         (csv-call-with-file \"{}\" \",\" (lambda (next-row header) (/ 1 0)))",
+        "(load \"{}\")\n         (csv-call-with-file \"{}\" \",\" (lambda (header next-row) (/ 1 0)))",
         lib, fixture
     );
     let err = eval_all(&src).expect_err("expected division by zero");
