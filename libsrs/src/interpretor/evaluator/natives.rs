@@ -1,7 +1,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-
 use crate::types::core::{Env, Native, PortData, SrsValue};
 
 mod arithmetic;

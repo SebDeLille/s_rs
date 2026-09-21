@@ -1,4 +1,4 @@
-use libsrs::interpretor::evaluator::{eval, global_env, EvalError};
+use libsrs::interpretor::evaluator::{EvalError, eval, global_env};
 use libsrs::interpretor::lexical_analyzer::get_lexemes;
 use libsrs::interpretor::reader::read_all;
 use libsrs::types::core::SrsValue;
