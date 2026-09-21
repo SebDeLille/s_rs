@@ -79,6 +79,13 @@ pub(super) fn install(env: &Rc<Env>) {
         }),
     );
     env.define(
+        "list-ref".to_string(),
+        SrsValue::Native(Native {
+            name: "list-ref",
+            func: Rc::new(native_list_ref),
+        }),
+    );
+    env.define(
         "pair?".to_string(),
         SrsValue::Native(Native {
             name: "pair?",
@@ -267,6 +274,25 @@ fn native_reverse(args: &[SrsValue]) -> Result<SrsValue, String> {
         }
         [] => Err("not enough arguments to reverse".to_string()),
         _ => Err("too many arguments to reverse".to_string()),
+    }
+}
+
+/// `(list-ref list k)`: returns the k-th element of `list` (0-indexed).
+/// `list` must be a proper list and `k` a non-negative integer
+/// (R5RS/R7RS section 6.3.2).
+fn native_list_ref(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [list, SrsValue::Integer(k)] => {
+            let items = list_to_vec(list).map_err(|e| e.to_string())?;
+            let k = *k as usize;
+            items
+                .get(k)
+                .cloned()
+                .ok_or_else(|| "list-ref: index out of bounds".to_string())
+        }
+        [] => Err("not enough arguments to list-ref".to_string()),
+        [_] => Err("not enough arguments to list-ref".to_string()),
+        _ => Err("too many arguments to list-ref".to_string()),
     }
 }
 
