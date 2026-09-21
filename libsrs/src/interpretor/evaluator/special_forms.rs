@@ -40,22 +40,52 @@ pub(super) fn eval_combination(expr: &SrsValue, env: &Rc<Env>) -> Result<SrsValu
     apply(&proc, &args)
 }
 
-/// Handles `(define <name> <expr>)`, evaluating the initializer once and
-/// binding it in the current environment. Returns [`SrsValue::Unspecified`].
+/// Handles `(define <name> <expr>)` and the shorthand
+/// `(define (<name> <arg>...) <body>...)`, evaluating the initializer once
+/// and binding it in the current environment. Returns
+/// [`SrsValue::Unspecified`].
 fn eval_define(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
     match args {
-        [name, value_expr] => {
-            let name = match name {
-                SrsValue::Symbol(s) => s.clone(),
-                _ => return err(EvalErrorKind::WrongType),
-            };
+        [SrsValue::Symbol(name), value_expr] => {
             let value = eval(value_expr, env)?;
-            env.define(name, value);
+            env.define(name.clone(), value);
             Ok(SrsValue::Unspecified)
         }
-        [] | [_] => err(EvalErrorKind::NotEnoughArguments),
-        _ => err(EvalErrorKind::TooManyArguments),
+        [SrsValue::Pair(signature), body @ ..] => {
+            let (name, params) = parse_define_signature(signature)?;
+            let lambda = SrsValue::Procedure(Rc::new(Lambda {
+                params,
+                rest: None,
+                body: body.to_vec(),
+                env: env.clone(),
+            }));
+            env.define(name, lambda);
+            Ok(SrsValue::Unspecified)
+        }
+        [] => err(EvalErrorKind::NotEnoughArguments),
+        _ => err(EvalErrorKind::WrongType),
     }
+}
+
+/// Extracts the procedure name and parameter names from a `define`
+/// shorthand signature `(name arg1 arg2 ...)`.
+fn parse_define_signature(
+    signature: &Rc<RefCell<(SrsValue, SrsValue)>>,
+) -> Result<(String, Vec<String>), EvalError> {
+    let (name_node, params_node) = signature.borrow().clone();
+    let name = match name_node {
+        SrsValue::Symbol(s) => s,
+        _ => return err(EvalErrorKind::WrongType),
+    };
+    let params = list_to_vec(&params_node)?;
+    let mut names = Vec::with_capacity(params.len());
+    for param in params {
+        match param {
+            SrsValue::Symbol(s) => names.push(s),
+            _ => return err(EvalErrorKind::WrongType),
+        }
+    }
+    Ok((name, names))
 }
 
 /// Handles `(set! <name> <expr>)`, evaluating `<expr>` and mutating the
