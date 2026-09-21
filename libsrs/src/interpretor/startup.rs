@@ -21,6 +21,7 @@
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+use crate::interpretor::evaluator::{EvalError, EvalErrorKind};
 use crate::interpretor::repl::{EvalOutcome, eval_source};
 use crate::types::core::Env;
 
@@ -92,9 +93,13 @@ fn scm_files_in(dir: &Path) -> Vec<PathBuf> {
 fn load_script(path: &Path, env: &Rc<Env>) -> Result<(), String> {
     let source = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
 
-    match eval_source(&source, env)? {
-        EvalOutcome::Done(_) => Ok(()),
-        EvalOutcome::Incomplete => Err("unexpected end of input".to_string()),
+    match eval_source(&source, env) {
+        Ok(EvalOutcome::Done(_)) => Ok(()),
+        Ok(EvalOutcome::Incomplete) => Err("unexpected end of input".to_string()),
+        Err(EvalError {
+            kind: EvalErrorKind::Exit(code),
+        }) => std::process::exit(code),
+        Err(e) => Err(e.to_string()),
     }
 }
 

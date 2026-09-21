@@ -29,6 +29,9 @@ pub enum EvalErrorKind {
     WrongType,
     /// A native procedure reported an error (e.g. division by zero).
     Native(String),
+    /// A request to terminate the program/REPL, e.g. from the R7RS
+    /// extension `(exit [obj])`.
+    Exit(i32),
 }
 
 impl fmt::Display for EvalErrorKind {
@@ -40,6 +43,7 @@ impl fmt::Display for EvalErrorKind {
             EvalErrorKind::TooManyArguments => write!(f, "too many arguments"),
             EvalErrorKind::WrongType => write!(f, "wrong type"),
             EvalErrorKind::Native(msg) => write!(f, "{}", msg),
+            EvalErrorKind::Exit(code) => write!(f, "exit requested with code {}", code),
         }
     }
 }
@@ -79,11 +83,30 @@ pub fn eval(expr: &SrsValue, env: &Rc<Env>) -> Result<SrsValue, EvalError> {
 pub fn apply(proc: &SrsValue, args: &[SrsValue]) -> Result<SrsValue, EvalError> {
     match proc {
         SrsValue::Native(native) => (native.func)(args).map_err(|msg| EvalError {
-            kind: EvalErrorKind::Native(msg),
+            kind: parse_native_error(&msg),
         }),
         SrsValue::Procedure(lambda) => apply_lambda(lambda, args),
         _ => err(EvalErrorKind::NotAProcedure),
     }
+}
+
+/// Parses the error returned by a native procedure.
+///
+/// Some natives use a private marker encoding to transmit non-error
+/// conditions such as a request to exit the program. This function turns
+/// those markers into the appropriate [`EvalErrorKind`], everything else is
+/// treated as a regular native error.
+fn parse_native_error(msg: &str) -> EvalErrorKind {
+    const PREFIX: &str = "\x1b__EXIT_MARKER__:";
+    const SUFFIX: &str = "\x1b";
+    if let Some(body) = msg.strip_prefix(PREFIX) {
+        if let Some(code_str) = body.strip_suffix(SUFFIX) {
+            if let Ok(code) = code_str.parse::<i32>() {
+                return EvalErrorKind::Exit(code);
+            }
+        }
+    }
+    EvalErrorKind::Native(msg.to_string())
 }
 
 /// Binds `args` to a lambda's parameters in a fresh child environment and

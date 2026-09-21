@@ -1,7 +1,8 @@
 use std::io::{self, Write};
+use std::process;
 use std::rc::Rc;
 
-use libsrs::interpretor::evaluator::global_env_with_frontend;
+use libsrs::interpretor::evaluator::{EvalError, EvalErrorKind, global_env_with_frontend};
 use libsrs::interpretor::repl::{EvalOutcome, eval_source};
 use libsrs::interpretor::startup::load_startup_scripts;
 use libsrs::types::core::{Env, SrsValue};
@@ -35,18 +36,28 @@ fn main() {
             continue;
         }
 
-        if let Err(e) = eval_line(line, &env) {
-            eprintln!("erreur: {e}");
+        match eval_line(line, &env) {
+            Ok(()) => {}
+            Err(EvalError {
+                kind: EvalErrorKind::Exit(code),
+            }) => {
+                process::exit(code);
+            }
+            Err(e) => {
+                eprintln!("erreur: {e}");
+            }
         }
     }
 }
 
-fn eval_line(line: &str, env: &Rc<Env>) -> Result<(), String> {
+fn eval_line(line: &str, env: &Rc<Env>) -> Result<(), EvalError> {
     match eval_source(line, env)? {
         // The CLI evaluates one line at a time and doesn't support
         // multi-line input: an incomplete form is just reported as an
         // error, same as before this pipeline was factored out.
-        EvalOutcome::Incomplete => Err("unexpected end of input".to_string()),
+        EvalOutcome::Incomplete => Err(EvalError {
+            kind: EvalErrorKind::Native("unexpected end of input".to_string()),
+        }),
         EvalOutcome::Done(values) => {
             for value in values {
                 if !matches!(value, SrsValue::Unspecified) {

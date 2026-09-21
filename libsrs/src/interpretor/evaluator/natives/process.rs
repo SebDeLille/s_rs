@@ -12,6 +12,13 @@ pub(super) fn install(env: &Rc<Env>) {
         }),
     );
     env.define(
+        "exit".to_string(),
+        SrsValue::Native(Native {
+            name: "exit",
+            func: Rc::new(native_exit),
+        }),
+    );
+    env.define(
         "system".to_string(),
         SrsValue::Native(Native {
             name: "system",
@@ -33,6 +40,27 @@ fn native_process_installed_p(args: &[SrsValue]) -> Result<SrsValue, String> {
     match args {
         [] => Ok(SrsValue::Boolean(true)),
         _ => Err("too many arguments to process-installed?".to_string()),
+    }
+}
+
+/// `(exit)` / `(exit obj)`: extension R7RS `(scheme process-context)` qui
+/// demande la terminaison du programme/REPL.
+///
+/// - `(exit)` et tout objet autre que `#f` ou un entier : code 0.
+/// - `(exit #f)` : code 1 (sortie anormale).
+/// - `(exit 42)` : le code entier, siloé dans un `i32`.
+/// - Plus d'un argument est une erreur.
+fn native_exit(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [] => Err(crate::interpretor::evaluator::natives::exit_code_to_exit(0)),
+        [SrsValue::Boolean(false)] => {
+            Err(crate::interpretor::evaluator::natives::exit_code_to_exit(1))
+        }
+        [SrsValue::Integer(n)] => Err(crate::interpretor::evaluator::natives::exit_code_to_exit(
+            *n as i32,
+        )),
+        [_] => Err(crate::interpretor::evaluator::natives::exit_code_to_exit(0)),
+        _ => Err("too many arguments to exit".to_string()),
     }
 }
 
@@ -216,5 +244,51 @@ mod tests {
         )))];
         let err = native_system_star(&args).unwrap_err();
         assert!(err.starts_with("system*:"));
+    }
+
+    #[test]
+    fn exit_marker_starts_with_prefix() {
+        let err = super::super::exit_code_to_exit(42);
+        assert!(err.starts_with("\x1b__EXIT_MARKER__:"));
+        assert!(err.ends_with("\x1b"));
+    }
+
+    #[test]
+    fn exit_with_no_argument_requests_zero() {
+        let err = native_exit(&[]).unwrap_err();
+        assert!(err.contains("__EXIT_MARKER__:0"));
+    }
+
+    #[test]
+    fn exit_with_false_requests_failure() {
+        let err = native_exit(&[SrsValue::Boolean(false)]).unwrap_err();
+        assert!(err.contains("__EXIT_MARKER__:1"));
+    }
+
+    #[test]
+    fn exit_with_integer_requests_code() {
+        let err = native_exit(&[SrsValue::Integer(42)]).unwrap_err();
+        assert!(err.contains("__EXIT_MARKER__:42"));
+    }
+
+    #[test]
+    fn exit_with_true_requests_zero() {
+        let err = native_exit(&[SrsValue::Boolean(true)]).unwrap_err();
+        assert!(err.contains("__EXIT_MARKER__:0"));
+    }
+
+    #[test]
+    fn exit_with_other_value_requests_zero() {
+        let err = native_exit(&[SrsValue::String(Rc::new(std::cell::RefCell::new(
+            "bye".to_string(),
+        )))])
+        .unwrap_err();
+        assert!(err.contains("__EXIT_MARKER__:0"));
+    }
+
+    #[test]
+    fn exit_rejects_too_many_arguments() {
+        let err = native_exit(&[SrsValue::Boolean(true), SrsValue::Boolean(false)]).unwrap_err();
+        assert_eq!(err, "too many arguments to exit");
     }
 }

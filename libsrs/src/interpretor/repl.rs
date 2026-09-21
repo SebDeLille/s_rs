@@ -9,7 +9,7 @@
 
 use std::rc::Rc;
 
-use crate::interpretor::evaluator::eval;
+use crate::interpretor::evaluator::{EvalError, eval};
 use crate::interpretor::lexical_analyzer::{LexErrorKind, get_lexemes};
 use crate::interpretor::reader::{ReadErrorKind, read_all};
 use crate::types::core::{Env, SrsValue};
@@ -33,24 +33,28 @@ pub enum EvalOutcome {
 /// Returns [`EvalOutcome::Incomplete`] when `source` looks like a truncated
 /// form rather than an invalid one, so that REPL front-ends can prompt for
 /// more input instead of surfacing a spurious error.
-pub fn eval_source(source: &str, env: &Rc<Env>) -> Result<EvalOutcome, String> {
+pub fn eval_source(source: &str, env: &Rc<Env>) -> Result<EvalOutcome, EvalError> {
     let lexemes = match get_lexemes(source) {
         Ok(lexemes) => lexemes,
         Err(e) if is_incomplete_lex_error(&e.kind) => return Ok(EvalOutcome::Incomplete),
-        Err(e) => return Err(e.to_string()),
+        Err(e) => return Err(EvalError {
+            kind: crate::interpretor::evaluator::EvalErrorKind::Native(e.to_string()),
+        }),
     };
 
     let values = match read_all(lexemes) {
         Ok(values) => values,
         Err(e) if e.kind == ReadErrorKind::UnexpectedEof => return Ok(EvalOutcome::Incomplete),
-        Err(e) => return Err(e.to_string()),
+        Err(e) => return Err(EvalError {
+            kind: crate::interpretor::evaluator::EvalErrorKind::Native(e.to_string()),
+        }),
     };
 
     let mut results = Vec::with_capacity(values.len());
     for value in &values {
         match eval(value, env) {
             Ok(result) => results.push(result),
-            Err(e) => return Err(e.to_string()),
+            Err(e) => return Err(e),
         }
     }
 
@@ -108,7 +112,7 @@ mod tests {
     fn reports_genuine_errors_as_such() {
         let env = global_env();
         let err = eval_source("(unbound-symbol)", &env).unwrap_err();
-        assert!(!err.is_empty());
+        assert!(!err.to_string().is_empty());
     }
 
     #[test]

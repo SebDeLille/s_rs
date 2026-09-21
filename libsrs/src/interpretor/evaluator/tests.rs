@@ -988,3 +988,33 @@ fn load_bare_name_missing_file_error_mentions_resolved_path() {
     assert!(msg.contains("nonexistent_lib"));
     assert!(msg.contains(".config/srs/libs"));
 }
+
+#[test]
+fn exit_with_integer_yields_exit_error_kind() {
+    let err = eval_src("(exit 42)").unwrap_err();
+    assert!(matches!(err.kind, EvalErrorKind::Exit(42)));
+}
+
+#[test]
+fn exit_with_false_yields_failure_code() {
+    let err = eval_src("(exit #f)").unwrap_err();
+    assert!(matches!(err.kind, EvalErrorKind::Exit(1)));
+}
+
+#[test]
+fn exit_with_no_argument_yields_zero_code() {
+    let err = eval_src("(exit)").unwrap_err();
+    assert!(matches!(err.kind, EvalErrorKind::Exit(0)));
+}
+
+#[test]
+fn exit_propagates_through_lambda_application() {
+    let err = eval_src("((lambda () (exit 7)))").unwrap_err();
+    assert!(matches!(err.kind, EvalErrorKind::Exit(7)));
+}
+
+#[test]
+fn exit_with_too_many_arguments_is_native_error() {
+    let err = eval_src("(exit 1 2)").unwrap_err();
+    assert!(matches!(err.kind, EvalErrorKind::Native(ref msg) if msg == "too many arguments to exit"));
+}
