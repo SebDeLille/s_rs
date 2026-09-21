@@ -18,6 +18,7 @@ pub(super) fn eval_combination(expr: &SrsValue, env: &Rc<Env>) -> Result<SrsValu
     if let SrsValue::Symbol(op) = &items[0] {
         match op.as_str() {
             "define" => return eval_define(&items[1..], env),
+            "set!" => return eval_set(&items[1..], env),
             "lambda" => return eval_lambda(&items[1..], env),
             "let" => return eval_let(&items[1..], env),
             "let*" => return eval_let_star(&items[1..], env),
@@ -51,6 +52,31 @@ fn eval_define(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> 
             let value = eval(value_expr, env)?;
             env.define(name, value);
             Ok(SrsValue::Unspecified)
+        }
+        [] | [_] => err(EvalErrorKind::NotEnoughArguments),
+        _ => err(EvalErrorKind::TooManyArguments),
+    }
+}
+
+/// Handles `(set! <name> <expr>)`, evaluating `<expr>` and mutating the
+/// nearest existing binding of `<name>` in the environment chain. Signals
+/// an unbound-variable error if `<name>` is not bound anywhere. Returns
+/// [`SrsValue::Unspecified`].
+fn eval_set(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
+    match args {
+        [name, value_expr] => {
+            let name = match name {
+                SrsValue::Symbol(s) => s.clone(),
+                _ => return err(EvalErrorKind::WrongType),
+            };
+            let value = eval(value_expr, env)?;
+            if env.set(&name, value) {
+                Ok(SrsValue::Unspecified)
+            } else {
+                Err(EvalError {
+                    kind: EvalErrorKind::UnboundVariable(name),
+                })
+            }
         }
         [] | [_] => err(EvalErrorKind::NotEnoughArguments),
         _ => err(EvalErrorKind::TooManyArguments),

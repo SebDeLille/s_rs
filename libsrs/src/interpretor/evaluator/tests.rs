@@ -353,6 +353,35 @@ fn define_undefined_initializer_fails() {
 }
 
 #[test]
+fn set_mutates_existing_binding() {
+    assert!(matches!(
+        ok("(define x 1) (set! x 2) x"),
+        SrsValue::Integer(2)
+    ));
+}
+
+#[test]
+fn set_returns_unspecified() {
+    assert!(matches!(
+        ok("(define x 1) (set! x 2)"),
+        SrsValue::Unspecified
+    ));
+}
+
+#[test]
+fn set_mutates_binding_in_enclosing_scope() {
+    assert!(matches!(
+        ok("(define x 1) (define bump (lambda () (set! x (+ x 1)))) (bump) (bump) x"),
+        SrsValue::Integer(3)
+    ));
+}
+
+#[test]
+fn set_unbound_variable_fails() {
+    assert!(eval_src("(set! unknown 1)").is_err());
+}
+
+#[test]
 fn define_non_symbol_name_fails() {
     assert!(eval_src("(define 1 2)").is_err());
 }
