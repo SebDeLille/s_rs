@@ -92,6 +92,13 @@ pub(super) fn install(env: &Rc<Env>) {
             func: Rc::new(native_pair_p),
         }),
     );
+    env.define(
+        "append".to_string(),
+        SrsValue::Native(Native {
+            name: "append",
+            func: Rc::new(native_append),
+        }),
+    );
 }
 
 /// `(cons car cdr)`: allocates a fresh mutable pair.
@@ -303,6 +310,26 @@ fn native_pair_p(args: &[SrsValue]) -> Result<SrsValue, String> {
         [obj] => Ok(SrsValue::Boolean(matches!(obj, SrsValue::Pair(_)))),
         [] => Err("not enough arguments to pair?".to_string()),
         _ => Err("too many arguments to pair?".to_string()),
+    }
+}
+
+/// `(append list ...)`: returns a list consisting of the elements of the
+/// first `list`s followed by the last argument, which need not be a proper
+/// list (R5RS section 6.3.2). With no arguments, returns the empty list.
+fn native_append(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args.split_last() {
+        None => Ok(SrsValue::Nil),
+        Some((last, init)) => {
+            let mut items = Vec::new();
+            for list in init {
+                items.extend(list_to_vec(list).map_err(|e| e.to_string())?);
+            }
+            let mut result = last.clone();
+            for item in items.into_iter().rev() {
+                result = SrsValue::Pair(Rc::new(RefCell::new((item, result))));
+            }
+            Ok(result)
+        }
     }
 }
 
