@@ -1,4 +1,4 @@
-use libsrs::interpretor::evaluator::{eval, global_env, EvalError};
+use libsrs::interpretor::evaluator::{EvalError, eval, global_env};
 use libsrs::interpretor::lexical_analyzer::get_lexemes;
 use libsrs::interpretor::reader::read_all;
 use libsrs::types::core::SrsValue;
@@ -157,7 +157,10 @@ fn composed_cxr_level_2() {
 #[test]
 fn composed_cxr_level_3() {
     // (caddr '(1 2 3 4)) => 3
-    assert!(matches!(eval_src("(caddr '(1 2 3 4))"), SrsValue::Integer(3)));
+    assert!(matches!(
+        eval_src("(caddr '(1 2 3 4))"),
+        SrsValue::Integer(3)
+    ));
     // (caaar '(((42)))) => 42
     assert!(matches!(
         eval_src("(caaar '(((42))))"),
@@ -173,7 +176,10 @@ fn composed_cxr_level_4() {
         SrsValue::Integer(4)
     ));
     // (cddddr '(1 2 3 4 5)) => (5)
-    assert!(matches!(eval_src("(cddddr '(1 2 3 4 5))"), SrsValue::Pair(_)));
+    assert!(matches!(
+        eval_src("(cddddr '(1 2 3 4 5))"),
+        SrsValue::Pair(_)
+    ));
 }
 
 #[test]

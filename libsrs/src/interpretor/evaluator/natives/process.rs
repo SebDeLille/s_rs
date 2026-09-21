@@ -18,6 +18,13 @@ pub(super) fn install(env: &Rc<Env>) {
             func: Rc::new(native_system),
         }),
     );
+    env.define(
+        "system*".to_string(),
+        SrsValue::Native(Native {
+            name: "system*",
+            func: Rc::new(native_system_star),
+        }),
+    );
 }
 
 /// `(process-installed?)`: native trivial permettant de valider le
@@ -49,6 +56,26 @@ fn native_system(args: &[SrsValue]) -> Result<SrsValue, String> {
         .arg(command)
         .status()
         .map_err(|e| format!("system: {}", e))?;
+    Ok(exit_status_to_integer(status))
+}
+
+/// `(system* prog arg...)`: exécute `prog` avec les `arg...` comme arguments.
+///
+/// Contrairement à `system`, le programme est lancé directement sans passer
+/// par un shell intermédiaire.
+///
+/// Retourne le code de sortie du processus, ou `-1` s'il a été tué par un
+/// signal.
+fn native_system_star(args: &[SrsValue]) -> Result<SrsValue, String> {
+    if args.is_empty() {
+        return Err("not enough arguments to system*".to_string());
+    }
+    let strings = strings_from_args("system*", args)?;
+    let (program, argv) = strings.split_first().unwrap();
+    let status = std::process::Command::new(program)
+        .args(argv)
+        .status()
+        .map_err(|e| format!("system*: {}", e))?;
     Ok(exit_status_to_integer(status))
 }
 
@@ -142,5 +169,52 @@ mod tests {
         let b = SrsValue::String(Rc::new(std::cell::RefCell::new("hello".to_string())));
         let err = native_system(&[a, b]).unwrap_err();
         assert_eq!(err, "too many arguments to system");
+    }
+
+    #[test]
+    fn system_star_returns_zero_on_success() {
+        let args = [
+            SrsValue::String(Rc::new(std::cell::RefCell::new("/bin/sh".to_string()))),
+            SrsValue::String(Rc::new(std::cell::RefCell::new("-c".to_string()))),
+            SrsValue::String(Rc::new(std::cell::RefCell::new("exit 0".to_string()))),
+        ];
+        let result = native_system_star(&args).unwrap();
+        assert!(matches!(result, SrsValue::Integer(0)));
+    }
+
+    #[test]
+    fn system_star_returns_non_zero_exit_code() {
+        let args = [
+            SrsValue::String(Rc::new(std::cell::RefCell::new("/bin/sh".to_string()))),
+            SrsValue::String(Rc::new(std::cell::RefCell::new("-c".to_string()))),
+            SrsValue::String(Rc::new(std::cell::RefCell::new("exit 7".to_string()))),
+        ];
+        let result = native_system_star(&args).unwrap();
+        assert!(matches!(result, SrsValue::Integer(7)));
+    }
+
+    #[test]
+    fn system_star_rejects_non_string_argument() {
+        let args = [
+            SrsValue::String(Rc::new(std::cell::RefCell::new("/bin/sh".to_string()))),
+            SrsValue::Integer(42),
+        ];
+        let err = native_system_star(&args).unwrap_err();
+        assert_eq!(err, "system*: wrong type: expected string");
+    }
+
+    #[test]
+    fn system_star_rejects_no_arguments() {
+        let err = native_system_star(&[]).unwrap_err();
+        assert_eq!(err, "not enough arguments to system*");
+    }
+
+    #[test]
+    fn system_star_returns_error_when_program_not_found() {
+        let args = [SrsValue::String(Rc::new(std::cell::RefCell::new(
+            "/no/such/program/should/exist".to_string(),
+        )))];
+        let err = native_system_star(&args).unwrap_err();
+        assert!(err.starts_with("system*:"));
     }
 }

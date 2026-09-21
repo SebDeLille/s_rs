@@ -356,9 +356,12 @@ fn draw_point(args: &[SrsValue], state: &mut CanvasState) -> Result<SrsValue, St
     let y = numeric_to_f64(y, "draw-point")?;
     const POINT_RADIUS: f64 = 2.0;
     let color = state.current_color;
-    state
-        .commands
-        .push(DrawCommand::Point { x, y, r: POINT_RADIUS, color });
+    state.commands.push(DrawCommand::Point {
+        x,
+        y,
+        r: POINT_RADIUS,
+        color,
+    });
     Ok(SrsValue::Unspecified)
 }
 
@@ -383,7 +386,11 @@ mod tests {
     #[test]
     fn draw_point_records_current_color() {
         let mut state = CanvasState::new();
-        state.current_color = Color { r: 0.1, g: 0.2, b: 0.3 };
+        state.current_color = Color {
+            r: 0.1,
+            g: 0.2,
+            b: 0.3,
+        };
 
         draw_point(&[SrsValue::Float(1.5), SrsValue::Float(2.5)], &mut state).unwrap();
 
@@ -409,7 +416,11 @@ mod tests {
 
         assert!(
             draw_point(
-                &[SrsValue::Integer(1), SrsValue::Integer(2), SrsValue::Integer(3)],
+                &[
+                    SrsValue::Integer(1),
+                    SrsValue::Integer(2),
+                    SrsValue::Integer(3)
+                ],
                 &mut state
             )
             .is_err()
@@ -423,7 +434,10 @@ mod tests {
 
         assert!(
             draw_point(
-                &[SrsValue::String(Rc::new(RefCell::new("x".to_string()))), SrsValue::Integer(2)],
+                &[
+                    SrsValue::String(Rc::new(RefCell::new("x".to_string()))),
+                    SrsValue::Integer(2)
+                ],
                 &mut state
             )
             .is_err()

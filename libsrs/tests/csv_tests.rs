@@ -54,7 +54,12 @@ fn csv_lib_path() -> String {
 #[test]
 fn csv_read_file_parses_comma_fixture() {
     let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let fixture = escape_path(manifest.join("tests/fixtures/csv/users.csv").to_str().unwrap());
+    let fixture = escape_path(
+        manifest
+            .join("tests/fixtures/csv/users.csv")
+            .to_str()
+            .unwrap(),
+    );
     let lib = csv_lib_path();
     let src = format!(
         "(load \"{}\") (define csv (csv-read-file \"{}\" \",\")) (vector-length (csv-header csv))",
@@ -66,7 +71,12 @@ fn csv_read_file_parses_comma_fixture() {
 #[test]
 fn csv_read_file_parses_semicolon_fixture() {
     let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let fixture = escape_path(manifest.join("tests/fixtures/csv/users_semicolon.csv").to_str().unwrap());
+    let fixture = escape_path(
+        manifest
+            .join("tests/fixtures/csv/users_semicolon.csv")
+            .to_str()
+            .unwrap(),
+    );
     let lib = csv_lib_path();
     let src = format!(
         "(load \"{}\") (define csv (csv-read-file \"{}\" \";\")) (vector-length (csv-header csv))",
@@ -78,7 +88,12 @@ fn csv_read_file_parses_semicolon_fixture() {
 #[test]
 fn csv_for_each_row_iterates_all_rows() {
     let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let fixture = escape_path(manifest.join("tests/fixtures/csv/users.csv").to_str().unwrap());
+    let fixture = escape_path(
+        manifest
+            .join("tests/fixtures/csv/users.csv")
+            .to_str()
+            .unwrap(),
+    );
     let lib = csv_lib_path();
     let src = format!(
         "(load \"{}\")
@@ -93,7 +108,12 @@ fn csv_for_each_row_iterates_all_rows() {
 #[test]
 fn csv_for_each_row_header_is_stable_and_parsed() {
     let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let fixture = escape_path(manifest.join("tests/fixtures/csv/users.csv").to_str().unwrap());
+    let fixture = escape_path(
+        manifest
+            .join("tests/fixtures/csv/users.csv")
+            .to_str()
+            .unwrap(),
+    );
     let lib = csv_lib_path();
     let src = format!(
         "(load \"{}\")
@@ -118,7 +138,8 @@ fn csv_for_each_row_handles_empty_file() {
          (define out (open-output-string))
          (csv-for-each-row \"{}\" \",\" (lambda (h r) (display \"x\" out)))
          (string-length (get-output-string out))",
-        lib, escape_path(&path)
+        lib,
+        escape_path(&path)
     );
     assert_eq!(integer_value(eval_src(&src)), 0);
 }
@@ -129,7 +150,12 @@ fn csv_call_with_file_propagates_callback_error() {
     // even when the callback raises (see control_tests). This test only checks
     // that csv-call-with-file does not swallow errors from the callback.
     let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let fixture = escape_path(manifest.join("tests/fixtures/csv/users.csv").to_str().unwrap());
+    let fixture = escape_path(
+        manifest
+            .join("tests/fixtures/csv/users.csv")
+            .to_str()
+            .unwrap(),
+    );
     let lib = csv_lib_path();
     let src = format!(
         "(load \"{}\")\n         (csv-call-with-file \"{}\" \",\" (lambda (next-row header) (/ 1 0)))",
@@ -207,6 +233,12 @@ fn csv_parse_line_char_eq_bench() {
     );
 
     // Smoke check: both versions must complete in a reasonable amount of time.
-    assert!(fast_elapsed.as_secs() < 10, "char=? parser is unexpectedly slow");
-    assert!(naive_elapsed.as_secs() < 10, "naive parser is unexpectedly slow");
+    assert!(
+        fast_elapsed.as_secs() < 10,
+        "char=? parser is unexpectedly slow"
+    );
+    assert!(
+        naive_elapsed.as_secs() < 10,
+        "naive parser is unexpectedly slow"
+    );
 }
