@@ -62,12 +62,18 @@ fn dynamic_wind_runs_after_even_if_thunk_errors() {
 #[test]
 fn dynamic_wind_with_too_few_arguments_errors() {
     let err = eval_all("(dynamic-wind (lambda () 'a) (lambda () 'b))").unwrap_err();
-    assert!(err.contains("not enough arguments to dynamic-wind"), "unexpected error: {err}");
+    assert!(
+        err.contains("not enough arguments to dynamic-wind"),
+        "unexpected error: {err}"
+    );
 }
 
 #[test]
 fn dynamic_wind_with_too_many_arguments_errors() {
-    let err = eval_all("(dynamic-wind (lambda () 'a) (lambda () 'b) (lambda () 'c) 'd)")
-        .unwrap_err();
-    assert!(err.contains("too many arguments to dynamic-wind"), "unexpected error: {err}");
+    let err =
+        eval_all("(dynamic-wind (lambda () 'a) (lambda () 'b) (lambda () 'c) 'd)").unwrap_err();
+    assert!(
+        err.contains("too many arguments to dynamic-wind"),
+        "unexpected error: {err}"
+    );
 }
