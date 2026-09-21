@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+
 use crate::types::core::{Env, Native, PortData, SrsValue};
 
 mod arithmetic;
@@ -11,6 +12,19 @@ mod process;
 mod strings;
 mod trig;
 mod vectors;
+
+/// Builds an [`EvalError`] carrying [`EvalErrorKind::Exit`].
+///
+/// Natives that want to terminate the program/REPL use this helper instead
+/// of a plain `String` error so the front-end can extract the requested
+/// exit code.
+pub(super) fn exit_code_to_exit(code: i32) -> String {
+    // The only way for a native to abort evaluation is through its
+    // `Result<SrsValue, String>` return. Encode the exit request as a
+    // marker string that `apply` detects and converts into
+    // `EvalErrorKind::Exit`.
+    format!("\x1b__EXIT_MARKER__:{}\x1b", code)
+}
 
 /// Builds a fresh global environment with the base arithmetic procedures
 /// (`+`, `-`, `*`, `/`) already bound.
