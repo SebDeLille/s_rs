@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::io::{BufReader, Read};
+use std::process::ExitStatus;
 use std::rc::Rc;
 
 /// Lexical environment: variable bindings + optional parent scope.
@@ -268,6 +269,26 @@ impl PortData {
                 *pos = 0;
             }
             _ => {}
+        }
+    }
+
+    /// Closes a pipe input port and waits for its child process.
+    ///
+    /// Returns the child's [`ExitStatus`], or `None` if this is not an
+    /// [`InputPipe`][PortData::InputPipe]. Stdin/file readers are closed;
+    /// string ports are drained. Subsequent reads return EOF.
+    pub fn close_pipe(&mut self) -> Option<ExitStatus> {
+        match self {
+            PortData::InputPipe {
+                reader,
+                peeked,
+                child,
+            } => {
+                *reader = BufReader::new(Box::new(std::io::empty()));
+                *peeked = None;
+                child.wait().ok()
+            }
+            _ => None,
         }
     }
 
