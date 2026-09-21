@@ -4,6 +4,7 @@
 
 - Each GitHub issue is handled in a dedicated branch.
 - Changes are sent through a Pull Request.
+- A Pull Request must reference the issue it addresses (e.g. "Closes #42").
 - Do not push directly to `main`.
 
 ## Checks
