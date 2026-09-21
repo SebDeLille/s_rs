@@ -348,6 +348,56 @@ fn redefine_replaces_value() {
 }
 
 #[test]
+fn set_returns_unspecified() {
+    assert!(matches!(ok("(define x 1) (set! x 2)"), SrsValue::Unspecified));
+}
+
+#[test]
+fn set_mutates_global_binding() {
+    assert!(matches!(
+        ok("(define x 1) (set! x 2) x"),
+        SrsValue::Integer(2)
+    ));
+}
+
+#[test]
+fn set_mutates_let_bound_variable() {
+    assert!(matches!(
+        ok("(let ((x 1)) (set! x 2) x)"),
+        SrsValue::Integer(2)
+    ));
+}
+
+#[test]
+fn set_mutates_enclosing_scope_from_lambda_body() {
+    // The binding lives in the enclosing `let` scope, not in the lambda's
+    // own call frame, so `set!` must walk up the environment chain.
+    assert!(matches!(
+        ok("(let ((x 1)) (define bump! (lambda () (set! x (+ x 1)))) (bump!) (bump!) x)"),
+        SrsValue::Integer(3)
+    ));
+}
+
+#[test]
+fn set_on_unbound_variable_is_an_error() {
+    let err = eval_src("(set! never-defined 1)").unwrap_err();
+    assert_eq!(
+        err.kind,
+        EvalErrorKind::UnboundVariable("never-defined".to_string())
+    );
+}
+
+#[test]
+fn set_with_too_few_arguments_fails() {
+    assert!(eval_src("(define x 1) (set! x)").is_err());
+}
+
+#[test]
+fn set_with_too_many_arguments_fails() {
+    assert!(eval_src("(define x 1) (set! x 2 3)").is_err());
+}
+
+#[test]
 fn define_undefined_initializer_fails() {
     assert!(eval_src("(define x unknown)").is_err());
 }

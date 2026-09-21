@@ -11,6 +11,7 @@ Dispatch dans `interpretor/evaluator/special_forms.rs::eval_combination`.
 | Forme | Support | Notes |
 |---|---|---|
 | `define` | ✅ | `(define name expr)` uniquement — pas de sucre `(define (f x) ...)` |
+| `set!` | ✅ | `(set! variable expr)` — mute la liaison existante dans la portée courante ou une portée englobante (`let`, `let*`, etc.) ; erreur `unbound variable` si la variable n'est liée nulle part |
 | `lambda` | ✅ | paramètres fixes + reste variadique (dotted) |
 | `let` | ✅ | pas de `let` nommé (named let) |
 | `let*` | ✅ | |
@@ -22,16 +23,13 @@ Dispatch dans `interpretor/evaluator/special_forms.rs::eval_combination`.
 
 ### Non implémentées
 
-`cond`, `case`, `and`, `or`, `set!`, `letrec`/`letrec*`, `let` nommé,
+`cond`, `case`, `and`, `or`, `letrec`/`letrec*`, `let` nommé,
 `define-syntax`/`syntax-rules`/`let-syntax`, `delay`/`force`,
 `call-with-current-continuation`/`call/cc`.
 
 `dynamic-wind` est implémenté comme une native, mais de façon limitée (voir
 section [Contrôle](#contrôle)).
 
-> `Env::set` existe déjà dans `types/core.rs` mais n'est câblé à aucune forme
-> spéciale : `set!` n'est donc pas utilisable pour l'instant.
->
 > Le type `Promise` existe dans `types/core.rs` mais n'est utilisé par aucune
 > primitive : `delay`/`force` ne sont pas fonctionnels.
 
