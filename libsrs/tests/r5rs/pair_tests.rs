@@ -186,3 +186,30 @@ fn composed_cxr_level_4() {
 fn composed_cxr_errors_on_non_pair() {
     assert!(eval_src_result("(cadr 1)").is_err());
 }
+
+#[test]
+fn list_ref_returns_the_kth_element() {
+    assert!(matches!(
+        eval_src("(list-ref '(a b c d) 0)"),
+        SrsValue::Symbol(s) if s == "a"
+    ));
+    assert!(matches!(
+        eval_src("(list-ref '(a b c d) 2)"),
+        SrsValue::Symbol(s) if s == "c"
+    ));
+}
+
+#[test]
+fn list_ref_errors_when_index_out_of_bounds() {
+    assert!(eval_src_result("(list-ref '(a b c d) 4)").is_err());
+}
+
+#[test]
+fn list_ref_errors_on_negative_index() {
+    assert!(eval_src_result("(list-ref '(a b c) -1)").is_err());
+}
+
+#[test]
+fn list_ref_errors_on_improper_list() {
+    assert!(eval_src_result("(list-ref (cons 1 2) 0)").is_err());
+}
