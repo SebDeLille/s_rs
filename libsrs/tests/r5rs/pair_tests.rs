@@ -213,3 +213,53 @@ fn list_ref_errors_on_negative_index() {
 fn list_ref_errors_on_improper_list() {
     assert!(eval_src_result("(list-ref (cons 1 2) 0)").is_err());
 }
+
+#[test]
+fn append_returns_the_empty_list_with_no_arguments() {
+    assert!(matches!(eval_src("(append)"), SrsValue::Nil));
+}
+
+#[test]
+fn append_returns_the_argument_unchanged_with_one_argument() {
+    assert!(matches!(
+        eval_src("(length (append '(1 2 3)))"),
+        SrsValue::Integer(3)
+    ));
+}
+
+#[test]
+fn append_concatenates_several_lists() {
+    let src = "(append '(1 2) '(3 4) '(5 6))";
+    assert!(matches!(
+        eval_src("(length (append '(1 2) '(3 4) '(5 6)))"),
+        SrsValue::Integer(6)
+    ));
+    assert!(matches!(
+        eval_src(&format!("(car {src})")),
+        SrsValue::Integer(1)
+    ));
+    assert!(matches!(
+        eval_src(&format!("(list-ref {src} 5)")),
+        SrsValue::Integer(6)
+    ));
+}
+
+#[test]
+fn append_treats_empty_lists_as_identity() {
+    assert!(matches!(
+        eval_src("(length (append '() '(1)))"),
+        SrsValue::Integer(1)
+    ));
+    assert!(matches!(
+        eval_src("(length (append '(1) '()))"),
+        SrsValue::Integer(1)
+    ));
+}
+
+#[test]
+fn append_uses_the_last_argument_as_is_even_if_improper() {
+    assert!(matches!(
+        eval_src("(cdr (cdr (append '(1 2) 3)))"),
+        SrsValue::Integer(3)
+    ));
+}

@@ -37,25 +37,26 @@ pub fn eval_source(source: &str, env: &Rc<Env>) -> Result<EvalOutcome, EvalError
     let lexemes = match get_lexemes(source) {
         Ok(lexemes) => lexemes,
         Err(e) if is_incomplete_lex_error(&e.kind) => return Ok(EvalOutcome::Incomplete),
-        Err(e) => return Err(EvalError {
-            kind: crate::interpretor::evaluator::EvalErrorKind::Native(e.to_string()),
-        }),
+        Err(e) => {
+            return Err(EvalError {
+                kind: crate::interpretor::evaluator::EvalErrorKind::Native(e.to_string()),
+            });
+        }
     };
 
     let values = match read_all(lexemes) {
         Ok(values) => values,
         Err(e) if e.kind == ReadErrorKind::UnexpectedEof => return Ok(EvalOutcome::Incomplete),
-        Err(e) => return Err(EvalError {
-            kind: crate::interpretor::evaluator::EvalErrorKind::Native(e.to_string()),
-        }),
+        Err(e) => {
+            return Err(EvalError {
+                kind: crate::interpretor::evaluator::EvalErrorKind::Native(e.to_string()),
+            });
+        }
     };
 
     let mut results = Vec::with_capacity(values.len());
     for value in &values {
-        match eval(value, env) {
-            Ok(result) => results.push(result),
-            Err(e) => return Err(e),
-        }
+        results.push(eval(value, env)?);
     }
 
     Ok(EvalOutcome::Done(results))

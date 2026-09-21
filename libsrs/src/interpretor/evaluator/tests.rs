@@ -1016,5 +1016,7 @@ fn exit_propagates_through_lambda_application() {
 #[test]
 fn exit_with_too_many_arguments_is_native_error() {
     let err = eval_src("(exit 1 2)").unwrap_err();
-    assert!(matches!(err.kind, EvalErrorKind::Native(ref msg) if msg == "too many arguments to exit"));
+    assert!(
+        matches!(err.kind, EvalErrorKind::Native(ref msg) if msg == "too many arguments to exit")
+    );
 }

@@ -76,7 +76,7 @@ fn run_repl(env: &Rc<Env>) {
             continue;
         }
 
-        match eval_line(line, &env) {
+        match eval_line(line, env) {
             Ok(()) => {}
             Err(EvalError {
                 kind: EvalErrorKind::Exit(code),

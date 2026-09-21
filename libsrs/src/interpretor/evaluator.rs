@@ -99,12 +99,11 @@ pub fn apply(proc: &SrsValue, args: &[SrsValue]) -> Result<SrsValue, EvalError> 
 fn parse_native_error(msg: &str) -> EvalErrorKind {
     const PREFIX: &str = "\x1b__EXIT_MARKER__:";
     const SUFFIX: &str = "\x1b";
-    if let Some(body) = msg.strip_prefix(PREFIX) {
-        if let Some(code_str) = body.strip_suffix(SUFFIX) {
-            if let Ok(code) = code_str.parse::<i32>() {
-                return EvalErrorKind::Exit(code);
-            }
-        }
+    if let Some(body) = msg.strip_prefix(PREFIX)
+        && let Some(code_str) = body.strip_suffix(SUFFIX)
+        && let Ok(code) = code_str.parse::<i32>()
+    {
+        return EvalErrorKind::Exit(code);
     }
     EvalErrorKind::Native(msg.to_string())
 }
