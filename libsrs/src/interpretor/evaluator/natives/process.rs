@@ -11,6 +11,13 @@ pub(super) fn install(env: &Rc<Env>) {
             func: Rc::new(native_process_installed_p),
         }),
     );
+    env.define(
+        "system".to_string(),
+        SrsValue::Native(Native {
+            name: "system",
+            func: Rc::new(native_system),
+        }),
+    );
 }
 
 /// `(process-installed?)`: native trivial permettant de valider le
@@ -20,6 +27,29 @@ fn native_process_installed_p(args: &[SrsValue]) -> Result<SrsValue, String> {
         [] => Ok(SrsValue::Boolean(true)),
         _ => Err("too many arguments to process-installed?".to_string()),
     }
+}
+
+/// `(system command)`: exécute `command` dans `/bin/sh -c command`.
+///
+/// Retourne le code de sortie du processus, ou `-1` s'il a été tué par un
+/// signal.
+fn native_system(args: &[SrsValue]) -> Result<SrsValue, String> {
+    if args.is_empty() {
+        return Err("not enough arguments to system".to_string());
+    }
+    if args.len() > 1 {
+        return Err("too many arguments to system".to_string());
+    }
+    let command = match &args[0] {
+        SrsValue::String(s) => s.borrow().clone(),
+        _ => return Err("wrong type: expected string to system".to_string()),
+    };
+    let status = std::process::Command::new("/bin/sh")
+        .arg("-c")
+        .arg(command)
+        .status()
+        .map_err(|e| format!("system: {}", e))?;
+    Ok(exit_status_to_integer(status))
 }
 
 /// Convertit un [`ExitStatus`] en code de sortie entier.
@@ -73,5 +103,44 @@ mod tests {
         let got = strings_from_args("test", &[SrsValue::Integer(42)]);
         assert!(got.is_err());
         assert!(got.unwrap_err().contains("wrong type"));
+    }
+
+    #[test]
+    fn system_returns_zero_on_success() {
+        let args = [SrsValue::String(Rc::new(std::cell::RefCell::new(
+            "exit 0".to_string(),
+        )))];
+        let result = native_system(&args).unwrap();
+        assert!(matches!(result, SrsValue::Integer(0)));
+    }
+
+    #[test]
+    fn system_returns_non_zero_exit_code() {
+        let args = [SrsValue::String(Rc::new(std::cell::RefCell::new(
+            "exit 3".to_string(),
+        )))];
+        let result = native_system(&args).unwrap();
+        assert!(matches!(result, SrsValue::Integer(3)));
+    }
+
+    #[test]
+    fn system_rejects_non_string_argument() {
+        let args = [SrsValue::Integer(42)];
+        let err = native_system(&args).unwrap_err();
+        assert_eq!(err, "wrong type: expected string to system");
+    }
+
+    #[test]
+    fn system_rejects_no_arguments() {
+        let err = native_system(&[]).unwrap_err();
+        assert_eq!(err, "not enough arguments to system");
+    }
+
+    #[test]
+    fn system_rejects_too_many_arguments() {
+        let a = SrsValue::String(Rc::new(std::cell::RefCell::new("echo".to_string())));
+        let b = SrsValue::String(Rc::new(std::cell::RefCell::new("hello".to_string())));
+        let err = native_system(&[a, b]).unwrap_err();
+        assert_eq!(err, "too many arguments to system");
     }
 }
