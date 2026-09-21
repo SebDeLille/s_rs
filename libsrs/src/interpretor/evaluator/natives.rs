@@ -7,6 +7,7 @@ mod arithmetic;
 mod control;
 mod io;
 mod pairs;
+mod process;
 mod strings;
 mod trig;
 mod vectors;
@@ -37,6 +38,7 @@ pub fn global_env_with_frontend(frontend: &str) -> Rc<Env> {
     vectors::install(&env);
     strings::install(&env);
     control::install(&env);
+    process::install(&env);
     io::install(&env, stdin_port, stdout_port);
     install_frontend(&env, frontend);
     env
