@@ -10,28 +10,31 @@ Dispatch dans `interpretor/evaluator/special_forms.rs::eval_combination`.
 
 | Forme | Support | Notes |
 |---|---|---|
-| `define` | ✅ | `(define name expr)` uniquement — pas de sucre `(define (f x) ...)` |
+| `define` | ✅ | `(define name expr)` et sucre `(define (f x) ...)` |
 | `lambda` | ✅ | paramètres fixes + reste variadique (dotted) |
-| `let` | ✅ | pas de `let` nommé (named let) |
+| `let` | ✅ | formes ordinaire et nommée (named let) |
 | `let*` | ✅ | |
+| `letrec` | ✅ | initialisateurs évalués dans l'environnement contenant tous les noms |
 | `do` | ✅ | |
 | `if` | ✅ | |
+| `cond` | ✅ | clauses `else`, clauses sans action et destinataires `=>` |
+| `case` | ✅ | clauses de données et `else` |
+| `and` | ✅ | court-circuit ; `(and)` vaut `#t` |
+| `or` | ✅ | court-circuit ; `(or)` vaut `#f` |
+| `begin` | ✅ | séquence d'expressions |
+| `set!` | ✅ | modifie la liaison existante la plus proche |
 | `quote` | ✅ | |
 | `quasiquote` | ✅ | `unquote`, `unquote-splicing`, imbrication |
 | `load` | ⚠️ extension | chargement de fichier, non standard R5RS. Les chemins contenant un `/` ou se terminant par `.scm` sont utilisés tels quels ; un nom nu (ex: `(load "csv")`) est cherché dans `~/.config/srs/libs/<nom>.scm` |
 
 ### Non implémentées
 
-`begin`, `cond`, `case`, `and`, `or`, `set!`, `letrec`/`letrec*`, `let` nommé,
-`define-syntax`/`syntax-rules`/`let-syntax`, `delay`/`force`,
+`letrec*`, `define-syntax`/`syntax-rules`/`let-syntax`, `delay`/`force`,
 `call-with-current-continuation`/`call/cc`.
 
 `dynamic-wind` est implémenté comme une native, mais de façon limitée (voir
 section [Contrôle](#contrôle)).
 
-> `Env::set` existe déjà dans `types/core.rs` mais n'est câblé à aucune forme
-> spéciale : `set!` n'est donc pas utilisable pour l'instant.
->
 > Le type `Promise` existe dans `types/core.rs` mais n'est utilisé par aucune
 > primitive : `delay`/`force` ne sont pas fonctionnels.
 
@@ -145,9 +148,8 @@ Pas de nombres complexes.
 - Pas de continuations (`call/cc`). `dynamic-wind` est présent mais en version
   *downward-only* (pas de ré-entrance possible).
 - Pas de macros hygiéniques.
-- Pas de forme `begin` autonome, mais les corps de `lambda`, `let`,
-  `let*` et `do` évaluent leurs expressions en séquence et retournent la
-  dernière valeur (comportement équivalent à un `begin` implicite).
+- Pas de tail-call optimization : les boucles récursives nommées `let` restent
+  limitées par la pile d'appels Rust.
 
 ## Périmètre couvert par les tests
 
@@ -157,6 +159,8 @@ Pas de nombres complexes.
 - `pair_tests.rs` : `cons`, `car`, `cdr`, `length`, `null?`, `list`,
   `reverse`, `pair?`
 - `procedure_tests.rs` : `lambda`, application, `let`, `let*`
+- `evaluator/tests.rs` : formes spéciales `cond`, `case`, `and`, `or`,
+  `letrec` et `let` nommé
 - `vector_tests.rs` : `vector`, `vector?`, `make-vector`, `vector-length`,
   `vector-ref`, `vector-set!`, `vector->list`, `list->vector`, `vector-fill!`
 - `string_tests.rs` : `string?`, `string-length`, `string-ref`, `string=?`,
