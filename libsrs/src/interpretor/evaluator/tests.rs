@@ -540,6 +540,87 @@ fn if_too_many_args_fails() {
 }
 
 #[test]
+fn cond_selects_first_matching_clause_and_supports_else() {
+    assert!(matches!(
+        ok("(cond ((> 3 2) 'greater) ((< 3 2) 'less))"),
+        SrsValue::Symbol(ref name) if name == "greater"
+    ));
+    assert!(matches!(
+        ok("(cond ((> 3 3) 'greater) ((< 3 3) 'less) (else 'equal))"),
+        SrsValue::Symbol(ref name) if name == "equal"
+    ));
+}
+
+#[test]
+fn cond_recipient_clause_passes_test_value() {
+    assert!(matches!(
+        ok("(cond ((+ 1 1) => (lambda (value) value)) (else #f))"),
+        SrsValue::Integer(2)
+    ));
+}
+
+#[test]
+fn case_matches_datum_lists_and_else() {
+    assert!(matches!(
+        ok("(case (* 2 3) ((2 3 5 7) 'prime) ((1 4 6 8 9) 'composite))"),
+        SrsValue::Symbol(ref name) if name == "composite"
+    ));
+    assert!(matches!(
+        ok("(case (car '(c d)) ((a e i o u) 'vowel) ((w y) 'semivowel) (else 'consonant))"),
+        SrsValue::Symbol(ref name) if name == "consonant"
+    ));
+}
+
+#[test]
+fn and_short_circuits_and_returns_last_value() {
+    assert!(matches!(ok("(and)"), SrsValue::Boolean(true)));
+    assert!(matches!(
+        ok("(and (= 2 2) (> 2 1))"),
+        SrsValue::Boolean(true)
+    ));
+    assert!(matches!(
+        ok("(and (= 2 2) (< 2 1))"),
+        SrsValue::Boolean(false)
+    ));
+    assert_eq!(ok("(and 1 2 'c '(f g))").to_string(), "(f g)");
+    assert!(matches!(ok("(and #f (/ 1 0))"), SrsValue::Boolean(false)));
+}
+
+#[test]
+fn or_short_circuits_and_returns_first_true_value() {
+    assert!(matches!(ok("(or)"), SrsValue::Boolean(false)));
+    assert!(matches!(
+        ok("(or (= 2 2) (> 2 1))"),
+        SrsValue::Boolean(true)
+    ));
+    assert!(matches!(
+        ok("(or (= 2 2) (< 2 1))"),
+        SrsValue::Boolean(true)
+    ));
+    assert!(matches!(ok("(or #f #f #f)"), SrsValue::Boolean(false)));
+    assert!(matches!(ok("(or 7 (/ 3 0))"), SrsValue::Integer(7)));
+}
+
+#[test]
+fn named_let_supports_tail_recursive_loop() {
+    let src = "(let loop ((numbers '(3 -2 1 6 -5)) (nonneg '()) (neg '()))
+                 (cond ((null? numbers) (list nonneg neg))
+                       ((>= (car numbers) 0)
+                        (loop (cdr numbers) (cons (car numbers) nonneg) neg))
+                       ((< (car numbers) 0)
+                        (loop (cdr numbers) nonneg (cons (car numbers) neg)))))";
+    assert_eq!(ok(src).to_string(), "((6 1 3) (-5 -2))");
+}
+
+#[test]
+fn letrec_supports_mutually_recursive_procedures() {
+    let src = "(letrec ((even? (lambda (n) (if (= n 0) #t (odd? (- n 1)))))
+                        (odd?  (lambda (n) (if (= n 0) #f (even? (- n 1))))) )
+                 (even? 88))";
+    assert!(matches!(ok(src), SrsValue::Boolean(true)));
+}
+
+#[test]
 fn do_sums_from_zero_to_nine() {
     let src = "(do ((i 0 (+ i 1))
                      (sum 0 (+ sum i)))
