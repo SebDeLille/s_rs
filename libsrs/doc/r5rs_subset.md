@@ -64,16 +64,15 @@ Absents : `atan` à 2 arguments, `exp`, `log`.
 
 ### Paires et listes (`natives/pairs.rs`)
 
-`cons` `car` `cdr` `apply` `map` `length` `null?` `eq?` `list` `reverse`
-`pair?`
+`cons` `car` `cdr` `apply` `map` `for-each` `length` `null?` `eq?` `eqv?`
+`equal?` `list` `list?` `list-ref` `list-tail` `reverse` `pair?` `append`
+`memq` `memv` `member` `assq` `assv` `assoc` `caar`/`cadr`/...
 
 `eq?` compare l'identité des objets mutables (`Rc::ptr_eq`), et les
 valeurs atomiques par valeur (deux nombres égaux comptent comme
 égaux pour `eq?`, conformément à R5RS).
 
-Absents : `list?`, `set-car!`, `set-cdr!`, `append`, `list-ref`,
-`list-tail`, `memq`/`memv`/`member`, `assq`/`assv`/`assoc`,
-`for-each`, `caar`/`cadr`/..., `eqv?`/`equal?`.
+Absents : `set-car!`, `set-cdr!`.
 
 ### Vecteurs (`natives/vectors.rs`)
 
@@ -101,6 +100,13 @@ Absents : `string-set!`, `string-ci=?` et comparaisons insensibles à la casse,
 `char?` `char=?` `char->integer` `integer->char` `char-whitespace?`
 `char-numeric?` `char-alphabetic?` `char-upcase` `char-downcase`
 
+### Types et symboles (`natives/types.rs`)
+
+`symbol?` `symbol->string` `string->symbol` `boolean?` `procedure?`
+
+Le lecteur conserve la casse des symboles ; les conversions chaîne/symbole
+préservent donc exactement la casse fournie.
+
 ### Contrôle (`natives/control.rs`)
 
 `dynamic-wind` existe en version *downward-only* : `(dynamic-wind before thunk
@@ -125,10 +131,6 @@ Absents : `write`, `read`, `open-output-file`, etc.
 - Strings : `string-set!`, `string-ci=?` et apparentes, `make-string`,
   `string-fill!`
 - Chars : comparaisons ordonnées (`char<?`, `char>?`, `char<=?`, `char>=?`)
-- Symboles : `symbol?`, `symbol->string`, `string->symbol`
-- Booléens : `boolean?`
-- Procédures : `procedure?`
-- Égalité : `eqv?`, `equal?`
 
 ## Types Scheme (`types::core::SrsValue`)
 
@@ -168,7 +170,7 @@ Pas de nombres complexes.
 
 - `numerical_tests.rs` : `+`, `*`, `sin`/`cos`/`tan`/`atan`
 - `pair_tests.rs` : `cons`, `car`, `cdr`, `length`, `null?`, `list`,
-  `reverse`, `pair?`
+  `reverse`, `pair?`, `list?`, `list-tail`, `for-each`, recherche et égalité
 - `procedure_tests.rs` : `lambda`, application, `let`, `let*`
 - `evaluator/tests.rs` : formes spéciales `cond`, `case`, `and`, `or`,
   `letrec` et `let` nommé
@@ -177,6 +179,7 @@ Pas de nombres complexes.
 - `string_tests.rs` : prédicats, conversions et recherche string/char,
   `substring`, `string-append`, `string-index`, `number->string`,
   `string->number`
+- `type_tests.rs` : prédicats de types et conversions symbole/chaîne
 - `control_tests.rs` : `dynamic-wind` (ordre d'exécution, `after` en cas
   d'erreur du thunk, arité).
 - `io_tests.rs` : `display`, `newline`, `write-char`, `write-string`, ports

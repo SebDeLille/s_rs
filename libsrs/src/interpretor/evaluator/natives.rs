@@ -10,6 +10,7 @@ mod pairs;
 mod process;
 mod strings;
 mod trig;
+mod types;
 mod vectors;
 
 /// Builds an [`EvalError`] carrying [`EvalErrorKind::Exit`].
@@ -50,6 +51,7 @@ pub fn global_env_with_frontend(frontend: &str) -> Rc<Env> {
     pairs::install(&env);
     vectors::install(&env);
     strings::install(&env);
+    types::install(&env);
     control::install(&env);
     process::install(&env);
     io::install(&env, stdin_port, stdout_port);

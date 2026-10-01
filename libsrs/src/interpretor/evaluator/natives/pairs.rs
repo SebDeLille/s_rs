@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::rc::Rc;
 
 use crate::types::core::{Env, Native, SrsValue};
@@ -41,6 +42,13 @@ pub(super) fn install(env: &Rc<Env>) {
         SrsValue::Native(Native {
             name: "map",
             func: Rc::new(native_map),
+        }),
+    );
+    env.define(
+        "for-each".to_string(),
+        SrsValue::Native(Native {
+            name: "for-each",
+            func: Rc::new(native_for_each),
         }),
     );
     env.define(
@@ -99,6 +107,40 @@ pub(super) fn install(env: &Rc<Env>) {
             func: Rc::new(native_append),
         }),
     );
+    for (name, func) in [
+        (
+            "list?",
+            native_list_p as fn(&[SrsValue]) -> Result<SrsValue, String>,
+        ),
+        ("list-tail", native_list_tail),
+        ("memq", native_memq),
+        ("memv", native_memv),
+        ("member", native_member),
+        ("assq", native_assq),
+        ("assv", native_assv),
+        ("assoc", native_assoc),
+        ("eqv?", native_eqv_p),
+        ("equal?", native_equal_p),
+    ] {
+        env.define(
+            name.to_string(),
+            SrsValue::Native(Native {
+                name: match name {
+                    "list?" => "list?",
+                    "list-tail" => "list-tail",
+                    "memq" => "memq",
+                    "memv" => "memv",
+                    "member" => "member",
+                    "assq" => "assq",
+                    "assv" => "assv",
+                    "assoc" => "assoc",
+                    "eqv?" => "eqv?",
+                    _ => "equal?",
+                },
+                func: Rc::new(func),
+            }),
+        );
+    }
 }
 
 /// `(cons car cdr)`: allocates a fresh mutable pair.
@@ -241,6 +283,148 @@ fn native_map(args: &[SrsValue]) -> Result<SrsValue, String> {
     }
 }
 
+/// `(for-each proc list1 list2 ...)`: applies `proc` for side effects to
+/// corresponding elements, stopping when the shortest list is exhausted.
+fn native_for_each(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [] | [_] => Err("not enough arguments to for-each".to_string()),
+        [proc, lists @ ..] => {
+            let mut vecs = Vec::with_capacity(lists.len());
+            for list in lists {
+                vecs.push(list_to_vec(list).map_err(|e| e.to_string())?);
+            }
+            let len = vecs.iter().map(Vec::len).min().unwrap_or(0);
+            for i in 0..len {
+                let call_args: Vec<SrsValue> = vecs.iter().map(|v| v[i].clone()).collect();
+                apply(proc, &call_args).map_err(|e| e.to_string())?;
+            }
+            Ok(SrsValue::Unspecified)
+        }
+    }
+}
+
+fn native_list_p(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [list] => {
+            let mut current = list.clone();
+            let mut seen = HashSet::new();
+            loop {
+                match current {
+                    SrsValue::Nil => return Ok(SrsValue::Boolean(true)),
+                    SrsValue::Pair(cell) => {
+                        if !seen.insert(Rc::as_ptr(&cell) as usize) {
+                            return Ok(SrsValue::Boolean(false));
+                        }
+                        current = cell.borrow().1.clone();
+                    }
+                    _ => return Ok(SrsValue::Boolean(false)),
+                }
+            }
+        }
+        [] => Err("not enough arguments to list?".to_string()),
+        _ => Err("too many arguments to list?".to_string()),
+    }
+}
+
+fn native_list_tail(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [list, SrsValue::Integer(index)] if *index >= 0 => {
+            let mut current = list.clone();
+            for _ in 0..*index {
+                match current {
+                    SrsValue::Pair(cell) => current = cell.borrow().1.clone(),
+                    _ => return Err("list-tail: index out of bounds".to_string()),
+                }
+            }
+            Ok(current)
+        }
+        [_, SrsValue::Integer(_)] => Err("list-tail: negative index".to_string()),
+        [_, _] => Err("wrong type: expected list and integer to list-tail".to_string()),
+        [] | [_] => Err("not enough arguments to list-tail".to_string()),
+        _ => Err("too many arguments to list-tail".to_string()),
+    }
+}
+
+fn native_memq(args: &[SrsValue]) -> Result<SrsValue, String> {
+    native_member_with(args, "memq", srs_value_eq)
+}
+
+fn native_memv(args: &[SrsValue]) -> Result<SrsValue, String> {
+    native_member_with(args, "memv", srs_value_eqv)
+}
+
+fn native_member(args: &[SrsValue]) -> Result<SrsValue, String> {
+    native_member_with(args, "member", srs_value_equal)
+}
+
+fn native_member_with(
+    args: &[SrsValue],
+    name: &str,
+    equal: fn(&SrsValue, &SrsValue) -> bool,
+) -> Result<SrsValue, String> {
+    match args {
+        [key, list] => {
+            let mut current = list.clone();
+            let mut seen = HashSet::new();
+            loop {
+                match current {
+                    SrsValue::Nil => return Ok(SrsValue::Boolean(false)),
+                    SrsValue::Pair(cell) => {
+                        if !seen.insert(Rc::as_ptr(&cell) as usize) {
+                            return Err(format!("{}: expected a proper list", name));
+                        }
+                        let (item, rest) = cell.borrow().clone();
+                        if equal(key, &item) {
+                            return Ok(SrsValue::Pair(cell));
+                        }
+                        current = rest;
+                    }
+                    _ => return Err(format!("{}: expected a proper list", name)),
+                }
+            }
+        }
+        [] | [_] => Err(format!("not enough arguments to {}", name)),
+        _ => Err(format!("too many arguments to {}", name)),
+    }
+}
+
+fn native_assq(args: &[SrsValue]) -> Result<SrsValue, String> {
+    native_assoc_with(args, "assq", srs_value_eq)
+}
+
+fn native_assv(args: &[SrsValue]) -> Result<SrsValue, String> {
+    native_assoc_with(args, "assv", srs_value_eqv)
+}
+
+fn native_assoc(args: &[SrsValue]) -> Result<SrsValue, String> {
+    native_assoc_with(args, "assoc", srs_value_equal)
+}
+
+fn native_assoc_with(
+    args: &[SrsValue],
+    name: &str,
+    equal: fn(&SrsValue, &SrsValue) -> bool,
+) -> Result<SrsValue, String> {
+    match args {
+        [key, list] => {
+            let entries = list_to_vec(list).map_err(|e| e.to_string())?;
+            for entry in entries {
+                match &entry {
+                    SrsValue::Pair(cell) => {
+                        if equal(key, &cell.borrow().0) {
+                            return Ok(entry);
+                        }
+                    }
+                    _ => return Err(format!("{}: expected a list of pairs", name)),
+                }
+            }
+            Ok(SrsValue::Boolean(false))
+        }
+        [] | [_] => Err(format!("not enough arguments to {}", name)),
+        _ => Err(format!("too many arguments to {}", name)),
+    }
+}
+
 /// `(length list)`: returns the number of elements in `list`, which must
 /// be a proper list (R5RS section 6.3.2).
 fn native_length(args: &[SrsValue]) -> Result<SrsValue, String> {
@@ -344,6 +528,22 @@ fn native_eq_p(args: &[SrsValue]) -> Result<SrsValue, String> {
     }
 }
 
+fn native_eqv_p(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [a, b] => Ok(SrsValue::Boolean(srs_value_eqv(a, b))),
+        [] | [_] => Err("not enough arguments to eqv?".to_string()),
+        _ => Err("too many arguments to eqv?".to_string()),
+    }
+}
+
+fn native_equal_p(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [a, b] => Ok(SrsValue::Boolean(srs_value_equal(a, b))),
+        [] | [_] => Err("not enough arguments to equal?".to_string()),
+        _ => Err("too many arguments to equal?".to_string()),
+    }
+}
+
 fn srs_value_eq(a: &SrsValue, b: &SrsValue) -> bool {
     match (a, b) {
         (SrsValue::Integer(x), SrsValue::Integer(y)) => x == y,
@@ -366,4 +566,49 @@ fn srs_value_eq(a: &SrsValue, b: &SrsValue) -> bool {
         }
         _ => false,
     }
+}
+
+/// `eqv?` compares numbers by their representation and all other atomic
+/// values by identity/value as appropriate. For the current value model its
+/// behavior matches `eq?`, while retaining a separate entry point for R5RS.
+fn srs_value_eqv(a: &SrsValue, b: &SrsValue) -> bool {
+    srs_value_eq(a, b)
+}
+
+fn srs_value_equal(a: &SrsValue, b: &SrsValue) -> bool {
+    fn equal(
+        a: &SrsValue,
+        b: &SrsValue,
+        compared_pairs: &mut HashSet<(usize, usize)>,
+        compared_vectors: &mut HashSet<(usize, usize)>,
+    ) -> bool {
+        match (a, b) {
+            (SrsValue::String(x), SrsValue::String(y)) => *x.borrow() == *y.borrow(),
+            (SrsValue::Pair(x), SrsValue::Pair(y)) => {
+                let ids = (Rc::as_ptr(x) as usize, Rc::as_ptr(y) as usize);
+                if !compared_pairs.insert(ids) {
+                    return true;
+                }
+                let (x_car, x_cdr) = x.borrow().clone();
+                let (y_car, y_cdr) = y.borrow().clone();
+                equal(&x_car, &y_car, compared_pairs, compared_vectors)
+                    && equal(&x_cdr, &y_cdr, compared_pairs, compared_vectors)
+            }
+            (SrsValue::Vector(x), SrsValue::Vector(y)) => {
+                let ids = (Rc::as_ptr(x) as usize, Rc::as_ptr(y) as usize);
+                if !compared_vectors.insert(ids) {
+                    return true;
+                }
+                let x = x.borrow();
+                let y = y.borrow();
+                x.len() == y.len()
+                    && x.iter()
+                        .zip(y.iter())
+                        .all(|(x, y)| equal(x, y, compared_pairs, compared_vectors))
+            }
+            _ => srs_value_eqv(a, b),
+        }
+    }
+
+    equal(a, b, &mut HashSet::new(), &mut HashSet::new())
 }
