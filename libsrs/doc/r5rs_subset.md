@@ -85,10 +85,21 @@ Absents : `vector-map`, `vector-for-each`, `vector-copy`.
 ### Chaînes (`natives/strings.rs`)
 
 `string?` `string-length` `string-ref` `string=?` `substring` `string-append`
-`list->string`
+`list->string` `string->list` `string-index` `string-copy` `number->string`
+`string->number`
 
-Absents : `string-set!`, `string->list`, `string-ci=?` et comparaisons
-insensibles à la casse, `make-string`, `string-copy`, `string-fill!`.
+`string->list` et `string-copy` acceptent les bornes optionnelles `start` et
+`end`. `string-index` retourne un index de caractère (Unicode) ou `#f`.
+`number->string` et `string->number` acceptent les bases 2, 8, 10 et 16 ; les
+nombres flottants sont pris en charge en base 10.
+
+Absents : `string-set!`, `string-ci=?` et comparaisons insensibles à la casse,
+`make-string`, `string-fill!`.
+
+### Caractères (`natives/strings.rs`)
+
+`char?` `char=?` `char->integer` `integer->char` `char-whitespace?`
+`char-numeric?` `char-alphabetic?` `char-upcase` `char-downcase`
 
 ### Contrôle (`natives/control.rs`)
 
@@ -111,9 +122,9 @@ Absents : `write`, `read`, `open-output-file`, etc.
 
 ### Totalement absent
 
-- Strings : `string-set!`, `string->list`, `string-ci=?` et apparentes,
-  `make-string`, `string-copy`, `string-fill!`
-- Chars : `char?`, `char->integer`, `integer->char`, `char-alphabetic?`, ...
+- Strings : `string-set!`, `string-ci=?` et apparentes, `make-string`,
+  `string-fill!`
+- Chars : comparaisons ordonnées (`char<?`, `char>?`, `char<=?`, `char>=?`)
 - Symboles : `symbol?`, `symbol->string`, `string->symbol`
 - Booléens : `boolean?`
 - Procédures : `procedure?`
@@ -163,8 +174,9 @@ Pas de nombres complexes.
   `letrec` et `let` nommé
 - `vector_tests.rs` : `vector`, `vector?`, `make-vector`, `vector-length`,
   `vector-ref`, `vector-set!`, `vector->list`, `list->vector`, `vector-fill!`
-- `string_tests.rs` : `string?`, `string-length`, `string-ref`, `string=?`,
-  `substring`, `string-append`, `list->string`
+- `string_tests.rs` : prédicats, conversions et recherche string/char,
+  `substring`, `string-append`, `string-index`, `number->string`,
+  `string->number`
 - `control_tests.rs` : `dynamic-wind` (ordre d'exécution, `after` en cas
   d'erreur du thunk, arité).
 - `io_tests.rs` : `display`, `newline`, `write-char`, `write-string`, ports
