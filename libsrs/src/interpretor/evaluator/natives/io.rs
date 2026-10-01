@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use super::super::{apply, scheme_error_to_native};
 use super::index_from;
 use crate::types::core::{Env, Native, PortData, SrsValue};
 
@@ -19,6 +20,7 @@ pub(super) fn install(
     let stdout_for_newline = stdout_port.clone();
     let stdout_for_write_char = stdout_port.clone();
     let stdout_for_write_string = stdout_port.clone();
+    let stdout_for_write = stdout_port.clone();
 
     env.define(
         "display".to_string(),
@@ -137,6 +139,27 @@ pub(super) fn install(
         SrsValue::Native(Native {
             name: "close-input-port",
             func: Rc::new(native_close_input_port),
+        }),
+    );
+    env.define(
+        "write".to_string(),
+        SrsValue::Native(Native {
+            name: "write",
+            func: Rc::new(move |args| native_write(args, &stdout_for_write)),
+        }),
+    );
+    env.define(
+        "call-with-input-file".to_string(),
+        SrsValue::Native(Native {
+            name: "call-with-input-file",
+            func: Rc::new(native_call_with_input_file),
+        }),
+    );
+    env.define(
+        "error".to_string(),
+        SrsValue::Native(Native {
+            name: "error",
+            func: Rc::new(native_error),
         }),
     );
 }
@@ -406,6 +429,62 @@ fn native_close_input_port(args: &[SrsValue]) -> Result<SrsValue, String> {
         [_] => Err("wrong type: expected input port".to_string()),
         _ => Err("too many arguments to close-input-port".to_string()),
     }
+}
+
+/// `(write value [port])`: writes the external representation of `value`.
+fn native_write(
+    args: &[SrsValue],
+    stdout_port: &Rc<RefCell<PortData>>,
+) -> Result<SrsValue, String> {
+    let (value, port) = match args {
+        [value] => (value, stdout_port.clone()),
+        [value, SrsValue::Port(port)] if port.borrow().is_output_port() => (value, port.clone()),
+        [_, SrsValue::Port(_)] => return Err("write: not an output port".to_string()),
+        [_, _] => return Err("wrong type: expected output port".to_string()),
+        [] => return Err("not enough arguments to write".to_string()),
+        _ => return Err("too many arguments to write".to_string()),
+    };
+    port.borrow_mut()
+        .write_string(&value.write_repr(), None, None)
+        .map(|_| SrsValue::Unspecified)
+}
+
+/// `(call-with-input-file filename procedure)`: calls `procedure` with an
+/// input port and closes that port whether the procedure succeeds or fails.
+fn native_call_with_input_file(args: &[SrsValue]) -> Result<SrsValue, String> {
+    let [SrsValue::String(path), procedure] = args else {
+        return Err(match args {
+            [] | [_] => "not enough arguments to call-with-input-file".to_string(),
+            [_, _] => "call-with-input-file: expected string filename".to_string(),
+            [_, _, ..] => "too many arguments to call-with-input-file".to_string(),
+        });
+    };
+    let port = Rc::new(RefCell::new(PortData::input_file(&*path.borrow())?));
+    let result = apply(procedure, &[SrsValue::Port(port.clone())]);
+    port.borrow_mut().close();
+    result.map_err(|error| scheme_error_to_native(&error))
+}
+
+/// `(error message irritant ...)`: raises a structured Scheme error.
+fn native_error(args: &[SrsValue]) -> Result<SrsValue, String> {
+    let [SrsValue::String(message), irritants @ ..] = args else {
+        return Err(match args {
+            [] => "not enough arguments to error".to_string(),
+            [_] => "error: expected string message".to_string(),
+            _ => "error: expected string message".to_string(),
+        });
+    };
+    let message = message.borrow();
+    let details = irritants
+        .iter()
+        .map(SrsValue::write_repr)
+        .collect::<Vec<_>>();
+    let rendered = if details.is_empty() {
+        message.clone()
+    } else {
+        format!("{} (irritants: {})", message, details.join(" "))
+    };
+    Err(format!("\x1b__SCHEME_ERROR_MARKER__:{}\x1b", rendered))
 }
 
 /// `(write-char char [port])`: writes `char` to the output port. Uses the

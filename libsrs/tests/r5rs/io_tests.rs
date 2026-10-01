@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use libsrs::interpretor::evaluator::{eval, global_env};
+use libsrs::interpretor::evaluator::{EvalErrorKind, eval, global_env};
 use libsrs::interpretor::lexical_analyzer::get_lexemes;
 use libsrs::interpretor::reader::read_all;
 use libsrs::types::core::SrsValue;
@@ -300,6 +300,96 @@ fn open_input_file_requires_string() {
     assert!(eval_all("(open-input-file 42)").is_err());
     assert!(eval_all("(open-input-file)").is_err());
     assert!(eval_all("(open-input-file \"a\" \"b\")").is_err());
+}
+
+#[test]
+fn call_with_input_file_reads_fixture_and_closes_port() {
+    let path = make_temp_file("first\nsecond\n");
+    let scm = format!(
+        "(define saved-port #f)
+         (define (read-all-lines p)
+           (let ((line (read-line p)))
+             (if (eof-object? line)
+                 '()
+                 (cons line (read-all-lines p)))))
+         (define file-lines
+           (call-with-input-file \"{}\"
+           (lambda (p)
+             (set! saved-port p)
+             (read-all-lines p))))
+         (and (equal? file-lines '(\"first\" \"second\"))
+              (eof-object? (read-line saved-port)))",
+        escape_path(&path)
+    );
+    assert!(boolean_value(eval_src(&scm)));
+}
+
+#[test]
+fn call_with_input_file_closes_port_when_procedure_errors() {
+    let path = make_temp_file("content");
+    let scm = format!(
+        "(define saved-port #f)
+         (call-with-input-file \"{}\"
+           (lambda (p) (set! saved-port p) (error \"failed\")))",
+        escape_path(&path)
+    );
+    let values = read_all(get_lexemes(&scm).unwrap()).unwrap();
+    let env = global_env();
+    assert!(eval(&values[0], &env).is_ok());
+    assert!(eval(&values[1], &env).is_err());
+    let check = read_all(get_lexemes("(eof-object? (read-line saved-port))").unwrap()).unwrap();
+    assert!(boolean_value(eval(&check[0], &env).unwrap()));
+}
+
+#[test]
+fn call_with_input_file_rejects_bad_arguments() {
+    assert!(eval_all("(call-with-input-file)").is_err());
+    assert!(eval_all("(call-with-input-file 42 (lambda (p) p))").is_err());
+    assert!(eval_all("(call-with-input-file \"x\")").is_err());
+    assert!(eval_all("(call-with-input-file \"x\" (lambda (p) p) 1)").is_err());
+}
+
+#[test]
+fn write_uses_scheme_external_representation() {
+    let result = eval_src(
+        r#"(let ((p (open-output-string)))
+            (write "a\"b" p)
+             (write #\a p)
+             (write #\space p)
+             (write 'sym p)
+             (write '(1 "a" #\b) p)
+             (get-output-string p))"#,
+    );
+    assert_eq!(string_value(result), r##""a\"b"#\a#\spacesym(1 "a" #\b)"##);
+}
+
+#[test]
+fn write_uses_current_output_port_and_checks_arguments() {
+    assert!(eval_all("(write 42)").is_ok());
+    assert!(eval_all("(write)").is_err());
+    assert!(eval_all("(write 1 2)").is_err());
+    assert!(eval_all("(write 1 (current-input-port))").is_err());
+    assert!(eval_all("(write 1 (open-output-string) 2)").is_err());
+}
+
+#[test]
+fn error_has_a_specific_kind_and_includes_message_and_irritants() {
+    let expr = read_all(get_lexemes("(error \"msg\" 1 2)").unwrap()).unwrap();
+    let env = global_env();
+    let error = eval(&expr[0], &env).unwrap_err();
+    assert_eq!(
+        error.kind,
+        EvalErrorKind::SchemeError("msg (irritants: 1 2)".to_string())
+    );
+    assert!(error.to_string().contains("msg"));
+    assert!(error.to_string().contains("1 2"));
+}
+
+#[test]
+fn error_requires_a_message_string() {
+    assert!(eval_all("(error)").is_err());
+    assert!(eval_all("(error 42)").is_err());
+    assert!(eval_all("(error \"msg\" 1)").is_err());
 }
 
 #[test]

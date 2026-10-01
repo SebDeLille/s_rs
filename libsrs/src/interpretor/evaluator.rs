@@ -29,6 +29,8 @@ pub enum EvalErrorKind {
     WrongType,
     /// A native procedure reported an error (e.g. division by zero).
     Native(String),
+    /// The Scheme `error` procedure was called.
+    SchemeError(String),
     /// A request to terminate the program/REPL, e.g. from the R7RS
     /// extension `(exit [obj])`.
     Exit(i32),
@@ -43,6 +45,7 @@ impl fmt::Display for EvalErrorKind {
             EvalErrorKind::TooManyArguments => write!(f, "too many arguments"),
             EvalErrorKind::WrongType => write!(f, "wrong type"),
             EvalErrorKind::Native(msg) => write!(f, "{}", msg),
+            EvalErrorKind::SchemeError(msg) => write!(f, "{}", msg),
             EvalErrorKind::Exit(code) => write!(f, "exit requested with code {}", code),
         }
     }
@@ -99,6 +102,12 @@ pub fn apply(proc: &SrsValue, args: &[SrsValue]) -> Result<SrsValue, EvalError> 
 fn parse_native_error(msg: &str) -> EvalErrorKind {
     const PREFIX: &str = "\x1b__EXIT_MARKER__:";
     const SUFFIX: &str = "\x1b";
+    const ERROR_PREFIX: &str = "\x1b__SCHEME_ERROR_MARKER__:";
+    if let Some(body) = msg.strip_prefix(ERROR_PREFIX)
+        && let Some(message) = body.strip_suffix(SUFFIX)
+    {
+        return EvalErrorKind::SchemeError(message.to_string());
+    }
     if let Some(body) = msg.strip_prefix(PREFIX)
         && let Some(code_str) = body.strip_suffix(SUFFIX)
         && let Ok(code) = code_str.parse::<i32>()
@@ -106,6 +115,15 @@ fn parse_native_error(msg: &str) -> EvalErrorKind {
         return EvalErrorKind::Exit(code);
     }
     EvalErrorKind::Native(msg.to_string())
+}
+
+pub(crate) fn scheme_error_to_native(error: &EvalError) -> String {
+    match &error.kind {
+        EvalErrorKind::SchemeError(message) => {
+            format!("\x1b__SCHEME_ERROR_MARKER__:{}\x1b", message)
+        }
+        _ => error.to_string(),
+    }
 }
 
 /// Binds `args` to a lambda's parameters in a fresh child environment and
