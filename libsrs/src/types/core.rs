@@ -167,6 +167,67 @@ impl fmt::Display for SrsValue {
 }
 
 impl SrsValue {
+    /// Formats a value using the external representation used by Scheme's
+    /// `write` procedure.
+    pub fn write_repr(&self) -> String {
+        match self {
+            SrsValue::String(s) => {
+                let mut out = String::from("\"");
+                for c in s.borrow().chars() {
+                    match c {
+                        '"' => out.push_str("\\\""),
+                        '\\' => out.push_str("\\\\"),
+                        '\n' => out.push_str("\\n"),
+                        '\t' => out.push_str("\\t"),
+                        '\r' => out.push_str("\\r"),
+                        other => out.push(other),
+                    }
+                }
+                out.push('"');
+                out
+            }
+            SrsValue::Character(c) => format!("#\\{}", format_char(*c)),
+            SrsValue::Pair(_) => {
+                let mut out = String::from("(");
+                let mut first = true;
+                let mut cur = self.clone();
+                loop {
+                    match cur {
+                        SrsValue::Pair(pair) => {
+                            let (car, cdr) = pair.borrow().clone();
+                            if !first {
+                                out.push(' ');
+                            }
+                            first = false;
+                            out.push_str(&car.write_repr());
+                            cur = cdr;
+                        }
+                        SrsValue::Nil => break,
+                        other => {
+                            out.push_str(" . ");
+                            out.push_str(&other.write_repr());
+                            break;
+                        }
+                    }
+                }
+                out.push(')');
+                out
+            }
+            SrsValue::Vector(values) => {
+                let mut out = String::from("#(");
+                for (index, value) in values.borrow().iter().enumerate() {
+                    if index > 0 {
+                        out.push(' ');
+                    }
+                    out.push_str(&value.write_repr());
+                }
+                out.push(')');
+                out
+            }
+            other => other.to_string(),
+        }
+    }
+
     /// Formats the value the way R5RS `display` does: strings are printed
     /// without surrounding quotes/escapes and characters are printed as
     /// themselves rather than as a `#\name` literal. Nested values (inside

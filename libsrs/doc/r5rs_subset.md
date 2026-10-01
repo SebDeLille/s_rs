@@ -122,9 +122,16 @@ après l'exécution de `after` (pas de continuation capturable et invocable).
 `display` `newline` `write-char` `write-string` `read-char` `peek-char`
 `read-line` `char-ready?` `eof-object` `eof-object?` `current-input-port`
 `current-output-port` `open-input-string` `open-input-file` `open-output-string`
-`get-output-string` `close-input-port`
+`get-output-string` `close-input-port` `write` `call-with-input-file`
 
-Absents : `write`, `read`, `open-output-file`, etc.
+`write` produit la représentation externe des valeurs (chaînes échappées,
+caractères sous la forme `#\\...`). `call-with-input-file` ouvre un port
+d'entrée, le passe à la procédure et le ferme après son retour, y compris si
+la procédure lève une erreur. `error` (extension SRFI-23/R7RS, absente de
+R5RS) lève un `EvalErrorKind::SchemeError` contenant le message et les
+irritants.
+
+Absents : `read`, `open-output-file`, `with-input-from-file`, etc.
 
 ### Totalement absent
 
