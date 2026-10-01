@@ -34,3 +34,7 @@ path = "tests/r5rs/string_tests.rs"
 [[test]]
 name = "r5rs_control"
 path = "tests/r5rs/control_tests.rs"
+
+[[test]]
+name = "r5rs_type"
+path = "tests/r5rs/type_tests.rs"

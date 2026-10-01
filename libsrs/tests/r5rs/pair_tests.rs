@@ -263,3 +263,119 @@ fn append_uses_the_last_argument_as_is_even_if_improper() {
         SrsValue::Integer(3)
     ));
 }
+
+#[test]
+fn for_each_applies_procedure_for_effects_and_returns_unspecified() {
+    let result = eval_src(
+        "(let ((v (make-vector 5))) (for-each (lambda (i) (vector-set! v i (* i i))) '(0 1 2 3 4)) v)",
+    );
+    assert_eq!(result.to_string(), "#(0 1 4 9 16)");
+    assert!(matches!(
+        eval_src("(for-each + '())"),
+        SrsValue::Unspecified
+    ));
+    assert!(matches!(
+        eval_src("(for-each + '(1 2) '(10))"),
+        SrsValue::Unspecified
+    ));
+}
+
+#[test]
+fn memq_memv_and_member_return_matching_tail_or_false() {
+    assert_eq!(eval_src("(memq 'a '(a b c))").to_string(), "(a b c)");
+    assert_eq!(eval_src("(memq 'b '(a b c))").to_string(), "(b c)");
+    assert!(matches!(
+        eval_src("(memq 'a '(b c d))"),
+        SrsValue::Boolean(false)
+    ));
+    assert!(matches!(
+        eval_src("(memq (list 'a) '(b (a) c))"),
+        SrsValue::Boolean(false)
+    ));
+    assert_eq!(
+        eval_src("(member (list 'a) '(b (a) c))").to_string(),
+        "((a) c)"
+    );
+    assert_eq!(
+        eval_src("(memv 101 '(100 101 102))").to_string(),
+        "(101 102)"
+    );
+}
+
+#[test]
+fn assq_assv_and_assoc_return_matching_entry_or_false() {
+    assert_eq!(
+        eval_src("(assq 'a '((a 1) (b 2) (c 3)))").to_string(),
+        "(a 1)"
+    );
+    assert_eq!(
+        eval_src("(assq 'b '((a 1) (b 2) (c 3)))").to_string(),
+        "(b 2)"
+    );
+    assert!(matches!(
+        eval_src("(assq 'd '((a 1) (b 2)))"),
+        SrsValue::Boolean(false)
+    ));
+    assert!(matches!(
+        eval_src("(assq (list 'a) '(((a)) ((b))))"),
+        SrsValue::Boolean(false)
+    ));
+    assert_eq!(
+        eval_src("(assoc (list 'a) '(((a)) ((b)) ((c))))").to_string(),
+        "((a))"
+    );
+    assert_eq!(
+        eval_src("(assv 5 '((2 3) (5 7) (11 13)))").to_string(),
+        "(5 7)"
+    );
+}
+
+#[test]
+fn list_predicate_and_list_tail_handle_lists_and_improper_tails() {
+    assert!(matches!(
+        eval_src("(list? '(a b c))"),
+        SrsValue::Boolean(true)
+    ));
+    assert!(matches!(eval_src("(list? '())"), SrsValue::Boolean(true)));
+    assert!(matches!(
+        eval_src("(list? '(a . b))"),
+        SrsValue::Boolean(false)
+    ));
+    assert_eq!(eval_src("(list-tail '(a b c d) 2)").to_string(), "(c d)");
+    assert!(matches!(eval_src("(list-tail '(a b) 2)"), SrsValue::Nil));
+    assert!(matches!(eval_src("(list-tail '(a . b) 1)"), SrsValue::Symbol(s) if s == "b"));
+}
+
+#[test]
+fn eqv_and_equal_compare_values_at_their_expected_depth() {
+    assert!(matches!(eval_src("(eqv? 'a 'a)"), SrsValue::Boolean(true)));
+    assert!(matches!(eval_src("(eqv? 'a 'b)"), SrsValue::Boolean(false)));
+    assert!(matches!(
+        eval_src("(eqv? 100000000 100000000)"),
+        SrsValue::Boolean(true)
+    ));
+    assert!(matches!(
+        eval_src("(eqv? (cons 1 2) (cons 1 2))"),
+        SrsValue::Boolean(false)
+    ));
+    assert!(matches!(
+        eval_src("(eqv? (lambda () 1) (lambda () 2))"),
+        SrsValue::Boolean(false)
+    ));
+    assert!(matches!(
+        eval_src("(let ((p (lambda (x) x))) (eqv? p p))"),
+        SrsValue::Boolean(true)
+    ));
+    assert!(matches!(
+        eval_src("(equal? '(a (b) c) '(a (b) c))"),
+        SrsValue::Boolean(true)
+    ));
+    assert!(matches!(
+        eval_src("(equal? \"abc\" \"abc\")"),
+        SrsValue::Boolean(true)
+    ));
+    assert!(matches!(
+        eval_src("(equal? (make-vector 5 'a) (make-vector 5 'a))"),
+        SrsValue::Boolean(true)
+    ));
+}
