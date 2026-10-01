@@ -621,6 +621,21 @@ fn letrec_supports_mutually_recursive_procedures() {
 }
 
 #[test]
+fn mutually_tail_recursive_procedures_handle_one_million_calls() {
+    let src = "(define (my-even? n) (if (= n 0) #t (my-odd? (- n 1))))
+               (define (my-odd? n) (if (= n 0) #f (my-even? (- n 1))))
+               (my-even? 1000000)";
+    assert!(matches!(ok(src), SrsValue::Boolean(true)));
+}
+
+#[test]
+fn apply_preserves_tail_position() {
+    let src = "(define (loop n) (if (= n 0) #t (apply loop (list (- n 1)))))
+               (loop 100000)";
+    assert!(matches!(ok(src), SrsValue::Boolean(true)));
+}
+
+#[test]
 fn do_sums_from_zero_to_nine() {
     let src = "(do ((i 0 (+ i 1))
                      (sum 0 (+ sum i)))

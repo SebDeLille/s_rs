@@ -4,35 +4,35 @@ use std::rc::Rc;
 use crate::types::core::{Env, Lambda, SrsValue};
 
 use super::util::{is_truthy, list_to_vec};
-use super::{EvalError, EvalErrorKind, apply, err, eval};
+use super::{EvalControl, EvalError, EvalErrorKind, apply_tail, err, eval};
 
 /// Evaluates a combination `(operator arg...)`, handling special forms
 /// (currently only `define`) before falling back to procedure application.
-pub(super) fn eval_combination(expr: &SrsValue, env: &Rc<Env>) -> Result<SrsValue, EvalError> {
+pub(super) fn eval_combination(expr: &SrsValue, env: &Rc<Env>) -> Result<EvalControl, EvalError> {
     let items = list_to_vec(expr)?;
 
     if items.is_empty() {
-        return Ok(SrsValue::Nil);
+        return Ok(EvalControl::Value(SrsValue::Nil));
     }
 
     if let SrsValue::Symbol(op) = &items[0] {
         match op.as_str() {
-            "define" => return eval_define(&items[1..], env),
-            "set!" => return eval_set(&items[1..], env),
-            "lambda" => return eval_lambda(&items[1..], env),
-            "let" => return eval_let(&items[1..], env),
-            "let*" => return eval_let_star(&items[1..], env),
-            "letrec" => return eval_letrec(&items[1..], env),
-            "cond" => return eval_cond(&items[1..], env),
-            "case" => return eval_case(&items[1..], env),
-            "and" => return eval_and(&items[1..], env),
-            "or" => return eval_or(&items[1..], env),
-            "do" => return eval_do(&items[1..], env),
-            "begin" => return eval_begin(&items[1..], env),
-            "if" => return eval_if(&items[1..], env),
-            "quote" => return eval_quote(&items[1..]),
-            "quasiquote" => return eval_quasiquote(&items[1..], env),
-            "load" => return eval_load(&items[1..], env),
+            "define" => return eval_define(&items[1..], env).map(EvalControl::Value),
+            "set!" => return eval_set(&items[1..], env).map(EvalControl::Value),
+            "lambda" => return eval_lambda(&items[1..], env).map(EvalControl::Value),
+            "let" => return eval_let_tail(&items[1..], env),
+            "let*" => return eval_let_star_tail(&items[1..], env),
+            "letrec" => return eval_letrec_tail(&items[1..], env),
+            "cond" => return eval_cond_tail(&items[1..], env),
+            "case" => return eval_case_tail(&items[1..], env),
+            "and" => return eval_and_tail(&items[1..], env),
+            "or" => return eval_or_tail(&items[1..], env),
+            "do" => return eval_do_tail(&items[1..], env),
+            "begin" => return eval_body_tail(&items[1..], env),
+            "if" => return eval_if_tail(&items[1..], env),
+            "quote" => return eval_quote(&items[1..]).map(EvalControl::Value),
+            "quasiquote" => return eval_quasiquote(&items[1..], env).map(EvalControl::Value),
+            "load" => return eval_load(&items[1..], env).map(EvalControl::Value),
             _ => {}
         }
     }
@@ -42,7 +42,187 @@ pub(super) fn eval_combination(expr: &SrsValue, env: &Rc<Env>) -> Result<SrsValu
     for arg in &items[1..] {
         args.push(eval(arg, env)?);
     }
-    apply(&proc, &args)
+    apply_tail(&proc, &args)
+}
+
+fn eval_tail(expr: &SrsValue, env: &Rc<Env>) -> Result<EvalControl, EvalError> {
+    if matches!(expr, SrsValue::Pair(_)) {
+        eval_combination(expr, env)
+    } else {
+        eval(expr, env).map(EvalControl::Value)
+    }
+}
+
+fn eval_body_tail(body: &[SrsValue], env: &Rc<Env>) -> Result<EvalControl, EvalError> {
+    let Some((last, preceding)) = body.split_last() else {
+        return Ok(EvalControl::Value(SrsValue::Unspecified));
+    };
+    for expr in preceding {
+        eval(expr, env)?;
+    }
+    eval_tail(last, env)
+}
+
+fn eval_if_tail(args: &[SrsValue], env: &Rc<Env>) -> Result<EvalControl, EvalError> {
+    match args {
+        [test, consequent] => {
+            if is_truthy(&eval(test, env)?) {
+                eval_tail(consequent, env)
+            } else {
+                Ok(EvalControl::Value(SrsValue::Unspecified))
+            }
+        }
+        [test, consequent, alternative] => {
+            let branch = if is_truthy(&eval(test, env)?) {
+                consequent
+            } else {
+                alternative
+            };
+            eval_tail(branch, env)
+        }
+        [] | [_] => err(EvalErrorKind::NotEnoughArguments),
+        _ => err(EvalErrorKind::TooManyArguments),
+    }
+}
+
+fn eval_and_tail(args: &[SrsValue], env: &Rc<Env>) -> Result<EvalControl, EvalError> {
+    let Some((last, preceding)) = args.split_last() else {
+        return Ok(EvalControl::Value(SrsValue::Boolean(true)));
+    };
+    for test in preceding {
+        let result = eval(test, env)?;
+        if !is_truthy(&result) {
+            return Ok(EvalControl::Value(result));
+        }
+    }
+    eval_tail(last, env)
+}
+
+fn eval_or_tail(args: &[SrsValue], env: &Rc<Env>) -> Result<EvalControl, EvalError> {
+    let Some((last, preceding)) = args.split_last() else {
+        return Ok(EvalControl::Value(SrsValue::Boolean(false)));
+    };
+    for test in preceding {
+        let result = eval(test, env)?;
+        if is_truthy(&result) {
+            return Ok(EvalControl::Value(result));
+        }
+    }
+    eval_tail(last, env)
+}
+
+fn eval_let_tail(args: &[SrsValue], env: &Rc<Env>) -> Result<EvalControl, EvalError> {
+    match args {
+        [SrsValue::Symbol(name), bindings_spec, body @ ..] => {
+            if body.is_empty() {
+                return err(EvalErrorKind::NotEnoughArguments);
+            }
+            let bindings = parse_bindings(bindings_spec)?;
+            let mut values = Vec::with_capacity(bindings.len());
+            for (_, init) in &bindings {
+                values.push(eval(init, env)?);
+            }
+            let let_env = Env::new(Some(env.clone()));
+            let procedure = SrsValue::Procedure(Rc::new(Lambda {
+                params: bindings.iter().map(|(name, _)| name.clone()).collect(),
+                rest: None,
+                body: body.to_vec(),
+                env: let_env.clone(),
+            }));
+            let_env.define(name.clone(), procedure.clone());
+            apply_tail(&procedure, &values)
+        }
+        [bindings_spec, body @ ..] => {
+            if body.is_empty() {
+                return err(EvalErrorKind::NotEnoughArguments);
+            }
+            let bindings = parse_bindings(bindings_spec)?;
+            let let_env = Env::new(Some(env.clone()));
+            for (name, init) in bindings {
+                let value = eval(&init, env)?;
+                let_env.define(name, value);
+            }
+            eval_body_tail(body, &let_env)
+        }
+        [] => err(EvalErrorKind::NotEnoughArguments),
+    }
+}
+
+fn eval_letrec_tail(args: &[SrsValue], env: &Rc<Env>) -> Result<EvalControl, EvalError> {
+    match args {
+        [bindings_spec, body @ ..] if !body.is_empty() => {
+            let bindings = parse_bindings(bindings_spec)?;
+            let let_env = Env::new(Some(env.clone()));
+            for (name, _) in &bindings {
+                let_env.define(name.clone(), SrsValue::Unspecified);
+            }
+            for (name, init) in bindings {
+                let value = eval(&init, &let_env)?;
+                let_env.set(&name, value);
+            }
+            eval_body_tail(body, &let_env)
+        }
+        _ => err(EvalErrorKind::NotEnoughArguments),
+    }
+}
+
+fn eval_cond_tail(args: &[SrsValue], env: &Rc<Env>) -> Result<EvalControl, EvalError> {
+    for (index, clause) in args.iter().enumerate() {
+        let parts = list_to_vec(clause)?;
+        let Some((test, actions)) = parts.split_first() else {
+            return err(EvalErrorKind::WrongType);
+        };
+        let is_else = matches!(test, SrsValue::Symbol(name) if name == "else");
+        if is_else && index + 1 != args.len() {
+            return err(EvalErrorKind::WrongType);
+        }
+        let value = if is_else {
+            SrsValue::Boolean(true)
+        } else {
+            eval(test, env)?
+        };
+        if is_truthy(&value) {
+            if actions.is_empty() {
+                return Ok(EvalControl::Value(value));
+            }
+            if matches!(actions.first(), Some(SrsValue::Symbol(name)) if name == "=>") {
+                if actions.len() != 2 {
+                    return err(EvalErrorKind::WrongType);
+                }
+                let recipient = eval(&actions[1], env)?;
+                return apply_tail(&recipient, &[value]);
+            }
+            return eval_body_tail(actions, env);
+        }
+    }
+    Ok(EvalControl::Value(SrsValue::Unspecified))
+}
+
+fn eval_case_tail(args: &[SrsValue], env: &Rc<Env>) -> Result<EvalControl, EvalError> {
+    let (key_expr, clauses) = match args.split_first() {
+        Some((key, clauses)) => (key, clauses),
+        None => return err(EvalErrorKind::NotEnoughArguments),
+    };
+    let key = eval(key_expr, env)?;
+    for (index, clause) in clauses.iter().enumerate() {
+        let parts = list_to_vec(clause)?;
+        let Some((datums, actions)) = parts.split_first() else {
+            return err(EvalErrorKind::WrongType);
+        };
+        if matches!(datums, SrsValue::Symbol(name) if name == "else") {
+            if index + 1 != clauses.len() {
+                return err(EvalErrorKind::WrongType);
+            }
+            return eval_body_tail(actions, env);
+        }
+        if list_to_vec(datums)?
+            .iter()
+            .any(|datum| case_datum_eq(&key, datum))
+        {
+            return eval_body_tail(actions, env);
+        }
+    }
+    Ok(EvalControl::Value(SrsValue::Unspecified))
 }
 
 /// Handles `(define <name> <expr>)` and the shorthand
@@ -136,48 +316,6 @@ fn eval_lambda(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> 
     }
 }
 
-/// Handles both ordinary and named `let`. Named `let` creates its recursive
-/// procedure in a fresh environment, then applies it to initializers evaluated
-/// in the enclosing environment.
-fn eval_let(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
-    match args {
-        [SrsValue::Symbol(name), bindings_spec, body @ ..] => {
-            if body.is_empty() {
-                return err(EvalErrorKind::NotEnoughArguments);
-            }
-            let bindings = parse_bindings(bindings_spec)?;
-            let mut values = Vec::with_capacity(bindings.len());
-            for (_, init) in &bindings {
-                values.push(eval(init, env)?);
-            }
-
-            let let_env = Env::new(Some(env.clone()));
-            let lambda = SrsValue::Procedure(Rc::new(Lambda {
-                params: bindings.iter().map(|(name, _)| name.clone()).collect(),
-                rest: None,
-                body: body.to_vec(),
-                env: let_env.clone(),
-            }));
-            let_env.define(name.clone(), lambda.clone());
-            apply(&lambda, &values)
-        }
-        [bindings_spec, body @ ..] => {
-            if body.is_empty() {
-                return err(EvalErrorKind::NotEnoughArguments);
-            }
-            let bindings = parse_bindings(bindings_spec)?;
-            let let_env = Env::new(Some(env.clone()));
-            for (name, init) in bindings {
-                let value = eval(&init, env)?;
-                let_env.define(name, value);
-            }
-
-            eval_body(body, &let_env)
-        }
-        [] => err(EvalErrorKind::NotEnoughArguments),
-    }
-}
-
 /// Parses a proper list of `(name initializer)` bindings.
 fn parse_bindings(spec: &SrsValue) -> Result<Vec<(String, SrsValue)>, EvalError> {
     let bindings = list_to_vec(spec)?;
@@ -192,123 +330,6 @@ fn parse_bindings(spec: &SrsValue) -> Result<Vec<(String, SrsValue)>, EvalError>
             }
         })
         .collect()
-}
-
-/// Evaluates a sequence of expressions and returns its last value.
-fn eval_body(body: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
-    let mut result = SrsValue::Unspecified;
-    for expr in body {
-        result = eval(expr, env)?;
-    }
-    Ok(result)
-}
-
-/// Handles `(letrec ((name init)...) body...)` by creating all bindings in a
-/// child environment before evaluating any initializer there. This lets
-/// closures refer to each other while they are being initialized.
-fn eval_letrec(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
-    match args {
-        [bindings_spec, body @ ..] if !body.is_empty() => {
-            let bindings = parse_bindings(bindings_spec)?;
-            let let_env = Env::new(Some(env.clone()));
-            for (name, _) in &bindings {
-                let_env.define(name.clone(), SrsValue::Unspecified);
-            }
-            for (name, init) in bindings {
-                let value = eval(&init, &let_env)?;
-                let_env.set(&name, value);
-            }
-            eval_body(body, &let_env)
-        }
-        [] | [_] => err(EvalErrorKind::NotEnoughArguments),
-        _ => err(EvalErrorKind::NotEnoughArguments),
-    }
-}
-
-/// Handles `(and test...)`, stopping at the first false value and returning
-/// the last value (or `#t` for the empty form).
-fn eval_and(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
-    let mut result = SrsValue::Boolean(true);
-    for test in args {
-        result = eval(test, env)?;
-        if !is_truthy(&result) {
-            return Ok(result);
-        }
-    }
-    Ok(result)
-}
-
-/// Handles `(or test...)`, stopping at the first true value and returning it
-/// (or `#f` for the empty form).
-fn eval_or(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
-    for test in args {
-        let result = eval(test, env)?;
-        if is_truthy(&result) {
-            return Ok(result);
-        }
-    }
-    Ok(SrsValue::Boolean(false))
-}
-
-/// Handles `cond`, including `else` and recipient (`=>`) clauses.
-fn eval_cond(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
-    for (index, clause) in args.iter().enumerate() {
-        let parts = list_to_vec(clause)?;
-        let Some((test, actions)) = parts.split_first() else {
-            return err(EvalErrorKind::WrongType);
-        };
-        let is_else = matches!(test, SrsValue::Symbol(name) if name == "else");
-        if is_else && index + 1 != args.len() {
-            return err(EvalErrorKind::WrongType);
-        }
-        let value = if is_else {
-            SrsValue::Boolean(true)
-        } else {
-            eval(test, env)?
-        };
-        if is_truthy(&value) {
-            if actions.is_empty() {
-                return Ok(value);
-            }
-            if matches!(actions.first(), Some(SrsValue::Symbol(name)) if name == "=>") {
-                if actions.len() != 2 {
-                    return err(EvalErrorKind::WrongType);
-                }
-                let recipient = eval(&actions[1], env)?;
-                return apply(&recipient, &[value]);
-            }
-            return eval_body(actions, env);
-        }
-    }
-    Ok(SrsValue::Unspecified)
-}
-
-/// Handles `case`, evaluating the key once and comparing it to datum labels.
-fn eval_case(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
-    let (key_expr, clauses) = match args.split_first() {
-        Some((key, clauses)) => (key, clauses),
-        None => return err(EvalErrorKind::NotEnoughArguments),
-    };
-    let key = eval(key_expr, env)?;
-    for (index, clause) in clauses.iter().enumerate() {
-        let parts = list_to_vec(clause)?;
-        let Some((datums, actions)) = parts.split_first() else {
-            return err(EvalErrorKind::WrongType);
-        };
-        if matches!(datums, SrsValue::Symbol(name) if name == "else") {
-            if index + 1 != clauses.len() {
-                return err(EvalErrorKind::WrongType);
-            }
-            return eval_body(actions, env);
-        }
-        let matched = list_to_vec(datums)?
-            .iter()
-            .any(|datum| case_datum_eq(&key, datum));
-        if matched {
-            return eval_body(actions, env);
-        }
-    }
-    Ok(SrsValue::Unspecified)
 }
 
 /// R5RS `case` labels are self-evaluating datums and use `eqv?`-like equality.
@@ -330,7 +351,7 @@ fn case_datum_eq(left: &SrsValue, right: &SrsValue) -> bool {
 /// R5RS semantics where later inits may refer to earlier names, and
 /// duplicate names are allowed), then evaluating the body in sequence
 /// (implicit `begin`) in the innermost environment.
-fn eval_let_star(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
+fn eval_let_star_tail(args: &[SrsValue], env: &Rc<Env>) -> Result<EvalControl, EvalError> {
     match args {
         [] => err(EvalErrorKind::NotEnoughArguments),
         [_] => err(EvalErrorKind::NotEnoughArguments),
@@ -355,11 +376,7 @@ fn eval_let_star(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError
             }
 
             let body_env = Env::new(Some(current_env));
-            let mut result = SrsValue::Unspecified;
-            for expr in body {
-                result = eval(expr, &body_env)?;
-            }
-            Ok(result)
+            eval_body_tail(body, &body_env)
         }
     }
 }
@@ -376,7 +393,7 @@ fn eval_let_star(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError
 /// values are bound simultaneously to `<var>` in a fresh environment for the
 /// next iteration. A `<var>` without a `<step>` keeps its value across
 /// iterations.
-fn eval_do(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
+fn eval_do_tail(args: &[SrsValue], env: &Rc<Env>) -> Result<EvalControl, EvalError> {
     match args {
         [] => err(EvalErrorKind::NotEnoughArguments),
         [_] => err(EvalErrorKind::NotEnoughArguments),
@@ -427,11 +444,7 @@ fn eval_do(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
 
             loop {
                 if is_truthy(&eval(&test_expr, &do_env)?) {
-                    let mut result = SrsValue::Unspecified;
-                    for expr in &result_exprs {
-                        result = eval(expr, &do_env)?;
-                    }
-                    return Ok(result);
+                    return eval_body_tail(&result_exprs, &do_env);
                 }
 
                 for command in commands {
@@ -454,42 +467,6 @@ fn eval_do(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
                 do_env = next_env;
             }
         }
-    }
-}
-
-/// Handles `(begin <expr>...)`, evaluating each expression in the current
-/// environment in order and returning the value of the last one (or
-/// [`SrsValue::Unspecified`] if there are none).
-fn eval_begin(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
-    let mut result = SrsValue::Unspecified;
-    for expr in args {
-        result = eval(expr, env)?;
-    }
-    Ok(result)
-}
-
-/// Handles `(if <test> <conseq> [<alt>])`. Per R5RS, any value other than
-/// `#f` counts as true. Evaluates and returns `<conseq>` when `<test>` is
-/// true, otherwise evaluates and returns `<alt>` if present, or
-/// [`SrsValue::Unspecified`] when it is absent.
-fn eval_if(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
-    match args {
-        [test, conseq] => {
-            if is_truthy(&eval(test, env)?) {
-                eval(conseq, env)
-            } else {
-                Ok(SrsValue::Unspecified)
-            }
-        }
-        [test, conseq, alt] => {
-            if is_truthy(&eval(test, env)?) {
-                eval(conseq, env)
-            } else {
-                eval(alt, env)
-            }
-        }
-        [] | [_] => err(EvalErrorKind::NotEnoughArguments),
-        _ => err(EvalErrorKind::TooManyArguments),
     }
 }
 
