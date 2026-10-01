@@ -69,28 +69,82 @@ pub(crate) fn err<T>(kind: EvalErrorKind) -> Result<T, EvalError> {
     Err(EvalError { kind })
 }
 
+/// An evaluation step either produces a value or schedules an expression in
+/// tail position. `eval` consumes the latter in a loop instead of recursing.
+pub(super) enum EvalControl {
+    Value(SrsValue),
+    Eval(SrsValue, Rc<Env>),
+}
+
 /// Evaluates a single [`SrsValue`] expression in the given environment.
 pub fn eval(expr: &SrsValue, env: &Rc<Env>) -> Result<SrsValue, EvalError> {
-    match expr {
-        SrsValue::Symbol(name) => env.get(name).ok_or_else(|| EvalError {
-            kind: EvalErrorKind::UnboundVariable(name.clone()),
-        }),
-        SrsValue::Pair(_) => special_forms::eval_combination(expr, env),
-        // Self-evaluating literals.
-        other => Ok(other.clone()),
+    let mut expr = expr.clone();
+    let mut env = env.clone();
+    loop {
+        match &expr {
+            SrsValue::Symbol(name) => {
+                return env.get(name).ok_or_else(|| EvalError {
+                    kind: EvalErrorKind::UnboundVariable(name.clone()),
+                });
+            }
+            SrsValue::Pair(_) => match special_forms::eval_combination(&expr, &env)? {
+                EvalControl::Value(value) => return Ok(value),
+                EvalControl::Eval(next_expr, next_env) => {
+                    expr = next_expr;
+                    env = next_env;
+                }
+            },
+            // Self-evaluating literals.
+            other => return Ok(other.clone()),
+        }
     }
 }
 
 /// Applies a callable [`SrsValue`] ([`SrsValue::Native`] or
 /// [`SrsValue::Procedure`]) to already-evaluated arguments.
 pub fn apply(proc: &SrsValue, args: &[SrsValue]) -> Result<SrsValue, EvalError> {
+    match apply_tail(proc, args)? {
+        EvalControl::Value(value) => Ok(value),
+        EvalControl::Eval(expr, env) => eval(&expr, &env),
+    }
+}
+
+/// Applies a procedure, scheduling a user procedure's body for evaluation in
+/// tail position rather than recursing through the Rust stack.
+pub(super) fn apply_tail(proc: &SrsValue, args: &[SrsValue]) -> Result<EvalControl, EvalError> {
     match proc {
-        SrsValue::Native(native) => (native.func)(args).map_err(|msg| EvalError {
-            kind: parse_native_error(&msg),
-        }),
+        SrsValue::Native(native) if native.name == "apply" => {
+            let (procedure, call_args) = expand_apply_arguments(args)?;
+            apply_tail(procedure, &call_args)
+        }
+        SrsValue::Native(native) => {
+            (native.func)(args)
+                .map(EvalControl::Value)
+                .map_err(|msg| EvalError {
+                    kind: parse_native_error(&msg),
+                })
+        }
         SrsValue::Procedure(lambda) => apply_lambda(lambda, args),
         _ => err(EvalErrorKind::NotAProcedure),
     }
+}
+
+fn expand_apply_arguments(args: &[SrsValue]) -> Result<(&SrsValue, Vec<SrsValue>), EvalError> {
+    let [procedure, rest @ ..] = args else {
+        return err(EvalErrorKind::Native(
+            "not enough arguments to apply".to_string(),
+        ));
+    };
+    let Some((final_list, leading)) = rest.split_last() else {
+        return err(EvalErrorKind::Native(
+            "not enough arguments to apply".to_string(),
+        ));
+    };
+    let mut call_args = leading.to_vec();
+    call_args.extend(util::list_to_vec(final_list).map_err(|e| EvalError {
+        kind: EvalErrorKind::Native(e.to_string()),
+    })?);
+    Ok((procedure, call_args))
 }
 
 /// Parses the error returned by a native procedure.
@@ -129,7 +183,7 @@ pub(crate) fn scheme_error_to_native(error: &EvalError) -> String {
 /// Binds `args` to a lambda's parameters in a fresh child environment and
 /// evaluates its body in sequence, returning the value of the last
 /// expression (implicit `begin`).
-fn apply_lambda(lambda: &Rc<Lambda>, args: &[SrsValue]) -> Result<SrsValue, EvalError> {
+fn apply_lambda(lambda: &Rc<Lambda>, args: &[SrsValue]) -> Result<EvalControl, EvalError> {
     if args.len() < lambda.params.len()
         || (lambda.rest.is_none() && args.len() > lambda.params.len())
     {
@@ -149,9 +203,11 @@ fn apply_lambda(lambda: &Rc<Lambda>, args: &[SrsValue]) -> Result<SrsValue, Eval
         call_env.define(rest_name.clone(), util::vec_to_list(rest_values));
     }
 
-    let mut result = SrsValue::Unspecified;
-    for expr in &lambda.body {
-        result = eval(expr, &call_env)?;
+    let Some((last, body)) = lambda.body.split_last() else {
+        return Ok(EvalControl::Value(SrsValue::Unspecified));
+    };
+    for expr in body {
+        eval(expr, &call_env)?;
     }
-    Ok(result)
+    Ok(EvalControl::Eval(last.clone(), call_env))
 }
