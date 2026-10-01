@@ -13,6 +13,16 @@ fn eval_src(scm: &str) -> SrsValue {
     result
 }
 
+fn eval_src_result(scm: &str) -> Result<SrsValue, libsrs::interpretor::evaluator::EvalError> {
+    let values = read_all(get_lexemes(scm).unwrap()).unwrap();
+    let env = global_env();
+    let mut result = SrsValue::Unspecified;
+    for value in &values {
+        result = eval(value, &env)?;
+    }
+    Ok(result)
+}
+
 #[test]
 fn add_two_integers() {
     assert!(matches!(eval_src("(+ 3 4)"), SrsValue::Integer(7)));
@@ -150,6 +160,71 @@ fn finite_false_for_infinity() {
 fn finite_false_for_nan() {
     assert!(matches!(
         eval_src("(finite? (/ 0.0 0.0))"),
+        SrsValue::Boolean(false)
+    ));
+}
+
+#[test]
+fn abs_and_min_preserve_numeric_types() {
+    assert!(matches!(eval_src("(abs -7)"), SrsValue::Integer(7)));
+    assert!(matches!(eval_src("(abs -7.5)"), SrsValue::Float(n) if n == 7.5));
+    assert!(matches!(eval_src("(min 3 4)"), SrsValue::Integer(3)));
+    assert!(matches!(eval_src("(min 3.9 4)"), SrsValue::Float(n) if n == 3.9));
+    assert!(matches!(eval_src("(min 4 3.9)"), SrsValue::Float(n) if n == 3.9));
+}
+
+#[test]
+fn quotient_remainder_and_modulo_follow_scheme_sign_rules() {
+    assert!(matches!(eval_src("(quotient 7 2)"), SrsValue::Integer(3)));
+    assert!(matches!(eval_src("(remainder 13 4)"), SrsValue::Integer(1)));
+    assert!(matches!(
+        eval_src("(remainder -13 4)"),
+        SrsValue::Integer(-1)
+    ));
+    assert!(matches!(
+        eval_src("(remainder 13 -4)"),
+        SrsValue::Integer(1)
+    ));
+    assert!(matches!(
+        eval_src("(remainder -13 -4)"),
+        SrsValue::Integer(-1)
+    ));
+    assert!(matches!(eval_src("(remainder -13 -4.0)"), SrsValue::Float(n) if n == -1.0));
+    assert!(matches!(eval_src("(modulo 13 4)"), SrsValue::Integer(1)));
+    assert!(matches!(eval_src("(modulo -13 4)"), SrsValue::Integer(3)));
+    assert!(matches!(eval_src("(modulo 13 -4)"), SrsValue::Integer(-3)));
+    assert!(matches!(eval_src("(modulo -13 -4)"), SrsValue::Integer(-1)));
+}
+
+#[test]
+fn integer_division_by_zero_returns_scheme_errors() {
+    assert!(eval_src_result("(quotient 1 0)").is_err());
+    assert!(eval_src_result("(modulo 1 0)").is_err());
+}
+
+#[test]
+fn numeric_type_and_sign_predicates() {
+    assert!(matches!(eval_src("(zero? 0)"), SrsValue::Boolean(true)));
+    assert!(matches!(eval_src("(zero? -0.0)"), SrsValue::Boolean(true)));
+    assert!(matches!(eval_src("(positive? 2)"), SrsValue::Boolean(true)));
+    assert!(matches!(
+        eval_src("(negative? -2)"),
+        SrsValue::Boolean(true)
+    ));
+    assert!(matches!(eval_src("(even? -4)"), SrsValue::Boolean(true)));
+    assert!(matches!(eval_src("(odd? -3)"), SrsValue::Boolean(true)));
+    assert!(matches!(eval_src("(number? 3)"), SrsValue::Boolean(true)));
+    assert!(matches!(eval_src("(number? 'a)"), SrsValue::Boolean(false)));
+    assert!(matches!(
+        eval_src("(integer? 3.0)"),
+        SrsValue::Boolean(true)
+    ));
+    assert!(matches!(
+        eval_src("(integer? (string->number \"8/4\"))"),
+        SrsValue::Boolean(true)
+    ));
+    assert!(matches!(
+        eval_src("(integer? 3.5)"),
         SrsValue::Boolean(false)
     ));
 }
