@@ -78,6 +78,13 @@ pub(super) fn install(env: &Rc<Env>) {
         }),
     );
     env.define(
+        "string-join".to_string(),
+        SrsValue::Native(Native {
+            name: "string-join",
+            func: Rc::new(native_string_join),
+        }),
+    );
+    env.define(
         "string-copy".to_string(),
         SrsValue::Native(Native {
             name: "string-copy",
@@ -341,6 +348,30 @@ fn native_string_split(args: &[SrsValue]) -> Result<SrsValue, String> {
         [] | [_] => Err("not enough arguments to string-split".to_string()),
         _ => Err("too many arguments to string-split".to_string()),
     }
+}
+
+/// `(string-join list [delimiter])`: concatenates a list of strings,
+/// separated by `delimiter` (a space by default).
+fn native_string_join(args: &[SrsValue]) -> Result<SrsValue, String> {
+    let delimiter = match args {
+        [_] => " ".to_string(),
+        [_, SrsValue::String(cell)] => cell.borrow().clone(),
+        [_, _] => return Err("wrong type: expected string delimiter to string-join".to_string()),
+        [] => return Err("not enough arguments to string-join".to_string()),
+        _ => return Err("too many arguments to string-join".to_string()),
+    };
+    let items = list_to_vec(&args[0])
+        .map_err(|_| "wrong type: expected list to string-join".to_string())?;
+    let mut parts = Vec::with_capacity(items.len());
+    for item in items {
+        match item {
+            SrsValue::String(cell) => parts.push(cell.borrow().clone()),
+            _ => return Err("wrong type: expected string in list to string-join".to_string()),
+        }
+    }
+    Ok(SrsValue::String(Rc::new(RefCell::new(
+        parts.join(&delimiter),
+    ))))
 }
 
 /// `(string-copy string [start [end]])`: returns a fresh string containing

@@ -189,7 +189,8 @@ Pas de nombres complexes.
 - `vector_tests.rs` : `vector`, `vector?`, `make-vector`, `vector-length`,
   `vector-ref`, `vector-set!`, `vector->list`, `list->vector`, `vector-fill!`
 - `string_tests.rs` : prédicats, conversions et recherche string/char,
-  `substring`, `string-append`, `string-index`, `string-split`, `number->string`,
+  `substring`, `string-append`, `string-index`, `string-split`, `string-join`,
+  `number->string`,
   `string->number`
 - `type_tests.rs` : prédicats de types et conversions symbole/chaîne
 - `control_tests.rs` : `dynamic-wind` (ordre d'exécution, `after` en cas
