@@ -277,3 +277,29 @@ fn string_split_rejects_bad_arguments() {
     assert!(eval_error("(string-split \"a\")").contains("not enough"));
     assert!(eval_error("(string-split \"a\" #\\, 1)").contains("too many"));
 }
+
+#[test]
+fn string_join_joins_with_delimiter() {
+    assert_eq!(
+        eval_src("(string-join '(\"a\" \"b\" \"c\") \",\")").to_string(),
+        "\"a,b,c\""
+    );
+    assert_eq!(
+        eval_src("(string-join '(\"a\" \"b\"))").to_string(),
+        "\"a b\""
+    );
+    assert_eq!(eval_src("(string-join '())").to_string(), "\"\"");
+    assert_eq!(
+        eval_src("(string-join (string-split \"a,b\" #\\,) \",\")").to_string(),
+        "\"a,b\""
+    );
+}
+
+#[test]
+fn string_join_rejects_bad_arguments() {
+    assert!(eval_error("(string-join 1)").contains("wrong type"));
+    assert!(eval_error("(string-join '(1))").contains("wrong type"));
+    assert!(eval_error("(string-join '(\"a\") #\\,)").contains("wrong type"));
+    assert!(eval_error("(string-join)").contains("not enough"));
+    assert!(eval_error("(string-join '() \",\" 1)").contains("too many"));
+}
