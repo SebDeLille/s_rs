@@ -71,13 +71,11 @@ Absents : `atan` à 2 arguments, `exp`, `log`.
 
 `cons` `car` `cdr` `apply` `map` `for-each` `length` `null?` `eq?` `eqv?`
 `equal?` `list` `list?` `list-ref` `list-tail` `list-index` `reverse` `pair?` `append`
-`memq` `memv` `member` `assq` `assv` `assoc` `caar`/`cadr`/...
+`memq` `memv` `member` `assq` `assv` `assoc` `caar`/`cadr`/... `set-car!` `set-cdr!`
 
 `eq?` compare l'identité des objets mutables (`Rc::ptr_eq`), et les
 valeurs atomiques par valeur (deux nombres égaux comptent comme
 égaux pour `eq?`, conformément à R5RS).
-
-Absents : `set-car!`, `set-cdr!`.
 
 ### Vecteurs (`natives/vectors.rs`)
 

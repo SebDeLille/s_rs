@@ -399,3 +399,33 @@ fn eqv_and_equal_compare_values_at_their_expected_depth() {
         SrsValue::Boolean(true)
     ));
 }
+
+#[test]
+fn set_car_mutates_the_first_element() {
+    assert!(matches!(
+        eval_src("(define p (cons 1 2)) (set-car! p 10) (car p)"),
+        SrsValue::Integer(10)
+    ));
+}
+
+#[test]
+fn set_cdr_mutates_the_second_element() {
+    assert!(matches!(
+        eval_src("(define p (cons 1 2)) (set-cdr! p 20) (cdr p)"),
+        SrsValue::Integer(20)
+    ));
+}
+
+#[test]
+fn set_car_is_visible_through_shared_references() {
+    assert!(matches!(
+        eval_src("(define p (cons 1 2)) (define q p) (set-car! q 5) (car p)"),
+        SrsValue::Integer(5)
+    ));
+}
+
+#[test]
+fn set_car_rejects_non_pairs() {
+    assert!(eval_src_result("(set-car! 1 2)").is_err());
+    assert!(eval_src_result("(set-cdr! '() 2)").is_err());
+}
