@@ -303,3 +303,27 @@ fn string_join_rejects_bad_arguments() {
     assert!(eval_error("(string-join)").contains("not enough"));
     assert!(eval_error("(string-join '() \",\" 1)").contains("too many"));
 }
+
+#[test]
+fn string_search_forward_finds_pattern_from_start() {
+    assert!(matches!(
+        eval_src("(string-search-forward \"lo\" \"héllo lo\" 0)"),
+        SrsValue::Integer(3)
+    ));
+    assert!(matches!(
+        eval_src("(string-search-forward \"lo\" \"héllo lo\" 4)"),
+        SrsValue::Integer(6)
+    ));
+    assert!(matches!(
+        eval_src("(string-search-forward \"z\" \"abc\" 0)"),
+        SrsValue::Boolean(false)
+    ));
+    assert!(matches!(
+        eval_src("(string-search-forward \"\" \"abc\" 3)"),
+        SrsValue::Integer(3)
+    ));
+    assert!(eval_error("(string-search-forward \"a\" \"a\" -1)").contains("negative"));
+    assert!(eval_error("(string-search-forward \"a\" \"a\" 5)").contains("out of range"));
+    assert!(eval_error("(string-search-forward 1 \"a\" 0)").contains("wrong type"));
+    assert!(eval_error("(string-search-forward \"a\" \"a\")").contains("not enough"));
+}
