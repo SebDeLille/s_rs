@@ -29,6 +29,20 @@ pub(super) fn install(env: &Rc<Env>) {
             func: Rc::new(native_cdr),
         }),
     );
+    env.define(
+        "set-car!".to_string(),
+        SrsValue::Native(Native {
+            name: "set-car!",
+            func: Rc::new(native_set_car),
+        }),
+    );
+    env.define(
+        "set-cdr!".to_string(),
+        SrsValue::Native(Native {
+            name: "set-cdr!",
+            func: Rc::new(native_set_cdr),
+        }),
+    );
     install_cxr(env);
     env.define(
         "apply".to_string(),
@@ -169,6 +183,32 @@ fn native_car(args: &[SrsValue]) -> Result<SrsValue, String> {
         [_] => Err("wrong type: expected pair".to_string()),
         [] => Err("not enough arguments to car".to_string()),
         _ => Err("too many arguments to car".to_string()),
+    }
+}
+
+/// `(set-car! pair obj)`: replaces the first element of `pair` with `obj`.
+fn native_set_car(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [SrsValue::Pair(cell), obj] => {
+            cell.borrow_mut().0 = obj.clone();
+            Ok(SrsValue::Unspecified)
+        }
+        [_, _] => Err("wrong type: expected pair".to_string()),
+        [] | [_] => Err("not enough arguments to set-car!".to_string()),
+        _ => Err("too many arguments to set-car!".to_string()),
+    }
+}
+
+/// `(set-cdr! pair obj)`: replaces the second element of `pair` with `obj`.
+fn native_set_cdr(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [SrsValue::Pair(cell), obj] => {
+            cell.borrow_mut().1 = obj.clone();
+            Ok(SrsValue::Unspecified)
+        }
+        [_, _] => Err("wrong type: expected pair".to_string()),
+        [] | [_] => Err("not enough arguments to set-cdr!".to_string()),
+        _ => Err("too many arguments to set-cdr!".to_string()),
     }
 }
 
