@@ -169,14 +169,12 @@ Pas de nombres complexes.
 
 ## Autres écarts vs R5RS
 
-- Pas de tail-call optimization : `eval`/`apply_lambda` sont des appels Rust
-  récursifs classiques → risque de stack overflow sur boucles récursives
-  profondes (pas de trampoline).
+- Tail-call optimization : `eval` consomme les appels en position terminale
+  dans une boucle (`apply_tail`) au lieu de récurser sur la pile Rust. Les
+  récursions non terminales restent limitées par la pile.
 - Pas de continuations (`call/cc`). `dynamic-wind` est présent mais en version
   *downward-only* (pas de ré-entrance possible).
 - Pas de macros hygiéniques.
-- Pas de tail-call optimization : les boucles récursives nommées `let` restent
-  limitées par la pile d'appels Rust.
 
 ## Périmètre couvert par les tests
 
@@ -184,7 +182,7 @@ Pas de nombres complexes.
 
 - `numerical_tests.rs` : `+`, `*`, `sin`/`cos`/`tan`/`atan`
 - `pair_tests.rs` : `cons`, `car`, `cdr`, `length`, `null?`, `list`,
-  `reverse`, `pair?`, `list?`, `list-tail`, `for-each`, recherche et égalité
+  `reverse`, `pair?`, `list?`, `list-tail`, `list-index`, `for-each`, recherche et égalité
 - `procedure_tests.rs` : `lambda`, application, `let`, `let*`
 - `evaluator/tests.rs` : formes spéciales `cond`, `case`, `and`, `or`,
   `letrec` et `let` nommé
@@ -192,9 +190,8 @@ Pas de nombres complexes.
   `vector-ref`, `vector-set!`, `vector->list`, `list->vector`, `vector-fill!`,
   `vector-map`, `vector-for-each`
 - `string_tests.rs` : prédicats, conversions et recherche string/char,
-  `substring`, `string-append`, `string-index`, `string-split`, `string-join`,
-  `number->string`,
-  `string->number`
+  `substring`, `string-append`, `string-index`, `string-search-forward`, `string-split`,
+  `string-join`, `number->string`, `string->number`
 - `type_tests.rs` : prédicats de types et conversions symbole/chaîne
 - `control_tests.rs` : `dynamic-wind` (ordre d'exécution, `after` en cas
   d'erreur du thunk, arité).
