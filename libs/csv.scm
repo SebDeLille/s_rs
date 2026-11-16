@@ -6,17 +6,7 @@
 (define csv-parse-line
   (lambda (line delimiter)
     "Parse LINE into a list of field strings, splitting on DELIMITER."
-    (let ((len (string-length line))
-          (d (string-ref delimiter 0)))
-      (do ((i 0 (+ i 1))
-           (field '() (if (char=? (string-ref line i) d)
-                          '()
-                          (cons (string-ref line i) field)))
-           (fields '() (if (char=? (string-ref line i) d)
-                           (cons (list->string (reverse field)) fields)
-                           fields)))
-          ((= i len) (reverse (cons (list->string (reverse field)) fields)))
-        'ok))))
+    (string-split line (string-ref delimiter 0))))
 
 (define csv-call-with-file
   (lambda (path delimiter callback)
@@ -81,16 +71,9 @@ ROW-FN with (HEADER ROW). The file is read lazily, one line at a time."
 (define csv-col-index
   (lambda (csv name)
     "Return the column index for NAME, or -1 if not found."
-    (let ((header (csv-header csv))
-          (len (vector-length (csv-header csv))))
-      (define csv-col-index-loop
-        (lambda (i)
-          (if (= i len)
-              -1
-              (if (string=? name (vector-ref header i))
-                  i
-                  (csv-col-index-loop (+ i 1))))))
-      (csv-col-index-loop 0))))
+    (let ((i (list-index (lambda (h) (string=? h name))
+                         (vector->list (csv-header csv)))))
+      (if i i -1))))
 
 (define csv-ref
   (lambda (csv row-idx col-name)
