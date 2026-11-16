@@ -71,6 +71,13 @@ pub(super) fn install(env: &Rc<Env>) {
         }),
     );
     env.define(
+        "string-split".to_string(),
+        SrsValue::Native(Native {
+            name: "string-split",
+            func: Rc::new(native_string_split),
+        }),
+    );
+    env.define(
         "string-copy".to_string(),
         SrsValue::Native(Native {
             name: "string-copy",
@@ -312,6 +319,27 @@ fn native_string_index(args: &[SrsValue]) -> Result<SrsValue, String> {
         [_, _] => Err("wrong type: expected string to string-index".to_string()),
         [] | [_] => Err("not enough arguments to string-index".to_string()),
         _ => Err("too many arguments to string-index".to_string()),
+    }
+}
+
+/// `(string-split string char)`: splits `string` on each occurrence of
+/// `char` and returns the list of segments (empty segments are kept).
+fn native_string_split(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [SrsValue::String(cell), SrsValue::Character(delim)] => {
+            let parts = cell
+                .borrow()
+                .split(*delim)
+                .map(|part| SrsValue::String(Rc::new(RefCell::new(part.to_string()))))
+                .collect();
+            Ok(super::super::util::vec_to_list(parts))
+        }
+        [SrsValue::String(_), _] => {
+            Err("wrong type: expected character to string-split".to_string())
+        }
+        [_, _] => Err("wrong type: expected string to string-split".to_string()),
+        [] | [_] => Err("not enough arguments to string-split".to_string()),
+        _ => Err("too many arguments to string-split".to_string()),
     }
 }
 
