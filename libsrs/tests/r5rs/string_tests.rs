@@ -256,3 +256,24 @@ fn character_predicate_and_conversions() {
     assert!(eval_error("(char? )").contains("not enough"));
     assert!(eval_error("(char? #\\a #\\b)").contains("too many"));
 }
+
+#[test]
+fn string_split_splits_on_character() {
+    assert_eq!(
+        eval_src("(string-split \"a,b,\" #\\,)").to_string(),
+        "(\"a\" \"b\" \"\")"
+    );
+    assert_eq!(eval_src("(string-split \"\" #\\,)").to_string(), "(\"\")");
+    assert_eq!(
+        eval_src("(string-split \"abc\" #\\,)").to_string(),
+        "(\"abc\")"
+    );
+}
+
+#[test]
+fn string_split_rejects_bad_arguments() {
+    assert!(eval_error("(string-split 1 #\\,)").contains("wrong type"));
+    assert!(eval_error("(string-split \"a\" \",\")").contains("wrong type"));
+    assert!(eval_error("(string-split \"a\")").contains("not enough"));
+    assert!(eval_error("(string-split \"a\" #\\, 1)").contains("too many"));
+}
