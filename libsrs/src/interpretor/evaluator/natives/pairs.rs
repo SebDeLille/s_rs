@@ -5,7 +5,7 @@ use std::rc::Rc;
 use crate::types::core::{Env, Native, SrsValue};
 
 use super::super::apply;
-use super::super::util::{list_to_vec, vec_to_list};
+use super::super::util::{is_truthy, list_to_vec, vec_to_list};
 
 pub(super) fn install(env: &Rc<Env>) {
     env.define(
@@ -49,6 +49,13 @@ pub(super) fn install(env: &Rc<Env>) {
         SrsValue::Native(Native {
             name: "for-each",
             func: Rc::new(native_for_each),
+        }),
+    );
+    env.define(
+        "list-index".to_string(),
+        SrsValue::Native(Native {
+            name: "list-index",
+            func: Rc::new(native_list_index),
         }),
     );
     env.define(
@@ -280,6 +287,24 @@ fn native_map(args: &[SrsValue]) -> Result<SrsValue, String> {
             }
             Ok(vec_to_list(results))
         }
+    }
+}
+
+/// `(list-index pred list)` (SRFI 1): returns the index of the first element
+/// satisfying `pred`, or `#f` if none does.
+fn native_list_index(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [pred, list] => {
+            let items = list_to_vec(list).map_err(|e| e.to_string())?;
+            for (i, item) in items.into_iter().enumerate() {
+                if is_truthy(&apply(pred, &[item]).map_err(|e| e.to_string())?) {
+                    return Ok(SrsValue::Integer(i as i64));
+                }
+            }
+            Ok(SrsValue::Boolean(false))
+        }
+        [] | [_] => Err("not enough arguments to list-index".to_string()),
+        _ => Err("too many arguments to list-index".to_string()),
     }
 }
 

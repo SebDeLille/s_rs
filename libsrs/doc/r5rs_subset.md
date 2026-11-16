@@ -70,7 +70,7 @@ Absents : `atan` à 2 arguments, `exp`, `log`.
 ### Paires et listes (`natives/pairs.rs`)
 
 `cons` `car` `cdr` `apply` `map` `for-each` `length` `null?` `eq?` `eqv?`
-`equal?` `list` `list?` `list-ref` `list-tail` `reverse` `pair?` `append`
+`equal?` `list` `list?` `list-ref` `list-tail` `list-index` `reverse` `pair?` `append`
 `memq` `memv` `member` `assq` `assv` `assoc` `caar`/`cadr`/...
 
 `eq?` compare l'identité des objets mutables (`Rc::ptr_eq`), et les

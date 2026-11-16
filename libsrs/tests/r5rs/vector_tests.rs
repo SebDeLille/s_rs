@@ -136,7 +136,9 @@ fn vector_fill_sets_every_element() {
 
 #[test]
 fn vector_map_applies_proc_to_each_element() {
-    let items = as_vec(&eval_src("(vector-map (lambda (x) (* x x)) (vector 1 2 3))"));
+    let items = as_vec(&eval_src(
+        "(vector-map (lambda (x) (* x x)) (vector 1 2 3))",
+    ));
     assert_eq!(items.len(), 3);
     assert!(matches!(items[2], SrsValue::Integer(9)));
 }
