@@ -131,6 +131,25 @@ pub(super) fn install(env: &Rc<Env>) {
             }),
         );
     }
+    let more: [(&'static str, Predicate); 8] = [
+        ("floor", native_floor),
+        ("round", native_round),
+        ("sqrt", native_sqrt),
+        ("expt", native_expt),
+        ("gcd", native_gcd),
+        ("lcm", native_lcm),
+        ("exp", native_exp),
+        ("log", native_log),
+    ];
+    for (name, func) in more {
+        env.define(
+            name.to_string(),
+            SrsValue::Native(Native {
+                name,
+                func: Rc::new(func),
+            }),
+        );
+    }
     env.define(
         "not".to_string(),
         SrsValue::Native(Native {
@@ -571,4 +590,158 @@ fn float_to_exact(f: f64) -> SrsValue {
 
 fn gcd(a: i64, b: i64) -> i64 {
     if b == 0 { a } else { gcd(b, a % b) }
+}
+
+fn make_rational(n: i64, d: i64) -> SrsValue {
+    let (mut n, mut d) = if d < 0 { (-n, -d) } else { (n, d) };
+    let g = gcd(n.abs(), d);
+    if g > 1 {
+        n /= g;
+        d /= g;
+    }
+    if d == 1 {
+        SrsValue::Integer(n)
+    } else {
+        SrsValue::Rational(n, d)
+    }
+}
+
+fn rounding(
+    args: &[SrsValue],
+    name: &str,
+    on_float: fn(f64) -> f64,
+    on_rational: fn(i64, i64) -> i64,
+) -> Result<SrsValue, String> {
+    match one_number(args, name)? {
+        SrsValue::Integer(n) => Ok(SrsValue::Integer(*n)),
+        SrsValue::Float(f) => Ok(SrsValue::Float(on_float(*f))),
+        SrsValue::Rational(n, d) if *d != 0 => {
+            let (n, d) = if *d < 0 { (-*n, -*d) } else { (*n, *d) };
+            Ok(SrsValue::Integer(on_rational(n, d)))
+        }
+        _ => Err(format!("wrong type: expected number to {}", name)),
+    }
+}
+
+fn native_floor(args: &[SrsValue]) -> Result<SrsValue, String> {
+    rounding(args, "floor", f64::floor, |n, d| n.div_euclid(d))
+}
+
+/// Rounds to the nearest integer, ties to even (as required by R5RS).
+fn native_round(args: &[SrsValue]) -> Result<SrsValue, String> {
+    rounding(args, "round", f64::round_ties_even, |n, d| {
+        let fl = n.div_euclid(d);
+        let twice_rem = 2 * (n - fl * d) as i128;
+        let d = d as i128;
+        if twice_rem > d || (twice_rem == d && fl % 2 != 0) {
+            fl + 1
+        } else {
+            fl
+        }
+    })
+}
+
+fn exact_sqrt(n: i64) -> Option<i64> {
+    if n < 0 {
+        return None;
+    }
+    let r = (n as f64).sqrt().round() as i64;
+    (r.checked_mul(r) == Some(n)).then_some(r)
+}
+
+fn native_sqrt(args: &[SrsValue]) -> Result<SrsValue, String> {
+    let value = one_number(args, "sqrt")?;
+    match value {
+        SrsValue::Integer(n) => {
+            if let Some(r) = exact_sqrt(*n) {
+                return Ok(SrsValue::Integer(r));
+            }
+        }
+        SrsValue::Rational(n, d) if *d > 0 => {
+            if let (Some(a), Some(b)) = (exact_sqrt(*n), exact_sqrt(*d)) {
+                return Ok(make_rational(a, b));
+            }
+        }
+        _ => {}
+    }
+    Ok(SrsValue::Float(numeric_to_f64(value)?.sqrt()))
+}
+
+fn native_expt(args: &[SrsValue]) -> Result<SrsValue, String> {
+    let (base, exponent) = match args {
+        [a, b] => (a, b),
+        [] | [_] => return Err("not enough arguments to expt".to_string()),
+        _ => return Err("too many arguments to expt".to_string()),
+    };
+    let base_exact = match base {
+        SrsValue::Integer(n) => Some((*n, 1)),
+        SrsValue::Rational(n, d) if *d != 0 => Some((*n, *d)),
+        _ => None,
+    };
+    if let (Some((n, d)), SrsValue::Integer(e)) = (base_exact, exponent) {
+        let magnitude =
+            u32::try_from(e.unsigned_abs()).map_err(|_| "integer overflow in expt".to_string())?;
+        let overflow = || "integer overflow in expt".to_string();
+        let pn = n.checked_pow(magnitude).ok_or_else(overflow)?;
+        let pd = d.checked_pow(magnitude).ok_or_else(overflow)?;
+        return if *e >= 0 {
+            Ok(make_rational(pn, pd))
+        } else if pn == 0 {
+            Err("division by zero".to_string())
+        } else {
+            Ok(make_rational(pd, pn))
+        };
+    }
+    one_number(std::slice::from_ref(base), "expt")?;
+    one_number(std::slice::from_ref(exponent), "expt")?;
+    Ok(SrsValue::Float(
+        numeric_to_f64(base)?.powf(numeric_to_f64(exponent)?),
+    ))
+}
+
+fn fold_integers(
+    args: &[SrsValue],
+    name: &str,
+    identity: i64,
+    combine: fn(i64, i64) -> Option<i64>,
+) -> Result<SrsValue, String> {
+    let mut acc = identity;
+    let mut inexact = false;
+    for value in args {
+        let (n, inex) = integer_argument(value, name)?;
+        inexact |= inex;
+        acc = combine(acc, n).ok_or_else(|| format!("integer overflow in {}", name))?;
+    }
+    if inexact {
+        Ok(SrsValue::Float(acc as f64))
+    } else {
+        Ok(SrsValue::Integer(acc))
+    }
+}
+
+fn native_gcd(args: &[SrsValue]) -> Result<SrsValue, String> {
+    fold_integers(args, "gcd", 0, |a, b| {
+        a.checked_abs()
+            .and_then(|a| b.checked_abs().map(|b| gcd(a, b)))
+    })
+}
+
+fn native_lcm(args: &[SrsValue]) -> Result<SrsValue, String> {
+    fold_integers(args, "lcm", 1, |a, b| {
+        if a == 0 || b == 0 {
+            return Some(0);
+        }
+        let (a, b) = (a.checked_abs()?, b.checked_abs()?);
+        (a / gcd(a, b)).checked_mul(b)
+    })
+}
+
+fn native_exp(args: &[SrsValue]) -> Result<SrsValue, String> {
+    let value = one_number(args, "exp")?;
+    Ok(SrsValue::Float(numeric_to_f64(value)?.exp()))
+}
+
+fn native_log(args: &[SrsValue]) -> Result<SrsValue, String> {
+    let value = one_number(args, "log")?;
+    Ok(SrsValue::Float(numeric_to_f64(value)?.ln()))
 }

@@ -46,7 +46,7 @@ Enregistrement central : `interpretor/evaluator/natives.rs::global_env()`.
 
 `+` `-` `*` `/` `=` `<` `>` `<=` `>=` `max` `min` `abs`
 `quotient` `remainder` `modulo` `zero?` `positive?` `negative?` `odd?` `even?`
-`number?` `integer?` `not`
+`number?` `integer?` `not` `floor` `round` `sqrt` `expt` `gcd` `lcm` `exp` `log`
 `exact->inexact` `inexact->exact` `exact?` `inexact?` `nan?` `finite?`
 
 `nan?` et `finite?` ne sont pas R5RS (empruntées à R7RS) : elles testent la
@@ -58,14 +58,29 @@ flottants à valeur entière ; leur résultat est inexact si l'un des arguments
 l'est. `remainder` suit le signe du dividende, tandis que `modulo` suit celui du
 diviseur. La division par zéro renvoie une erreur Scheme.
 
-Absents : `expt`, `sqrt`, `gcd`, `lcm`, `floor`, `ceiling`, `round`, `truncate`,
-`numerator`, `denominator`.
+`floor` et `round` : entier inchangé, flottant arrondi en flottant, rationnel
+converti en entier exact. `round` arrondit au pair en cas d'égalité.
+
+`sqrt` renvoie un résultat exact pour les carrés parfaits (entiers et
+rationnels), sinon un flottant (`NaN` pour un négatif).
+
+`expt` est exact pour une base exacte et un exposant entier (`(expt 2 -2)` vaut
+`1/4`), avec erreur en cas de dépassement ou de `0` à exposant négatif ; sinon
+le résultat est flottant.
+
+`gcd` et `lcm` sont variadiques (`(gcd)` vaut `0`, `(lcm)` vaut `1`) et
+acceptent les entiers exacts ou flottants à valeur entière (résultat inexact si
+l'un l'est).
+
+`exp` et `log` (1 argument) renvoient toujours un flottant.
+
+Absents : `ceiling`, `truncate`, `numerator`, `denominator`.
 
 ### Trigonométrie (`natives/trig.rs`)
 
 `sin` `cos` `tan` `atan` (1 argument seulement)
 
-Absents : `atan` à 2 arguments, `exp`, `log`.
+Absents : `atan` à 2 arguments.
 
 ### Paires et listes (`natives/pairs.rs`)
 
