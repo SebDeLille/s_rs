@@ -621,6 +621,37 @@ fn letrec_supports_mutually_recursive_procedures() {
 }
 
 #[test]
+fn letrec_star_initializes_sequentially() {
+    assert_eq!(
+        ok("(letrec* ((a 1) (b (+ a 1)) (f (lambda () (* b 10)))) (f))").to_string(),
+        "20"
+    );
+}
+
+#[test]
+fn delay_defers_and_force_memoizes() {
+    let src = "(define n 0)
+               (define p (delay (begin (set! n (+ n 1)) n)))
+               (list n (force p) (force p) n)";
+    assert_eq!(ok(src).to_string(), "(0 1 1 1)");
+}
+
+#[test]
+fn force_non_promise_returns_value_and_make_promise_works() {
+    assert_eq!(
+        ok("(list (force 5) (force (make-promise 7)) (promise? (delay 1)))").to_string(),
+        "(5 7 #t)"
+    );
+}
+
+#[test]
+fn delay_supports_lazy_streams() {
+    let src = "(define (ints n) (cons n (delay (ints (+ n 1)))))
+               (car (force (cdr (force (cdr (ints 1))))))";
+    assert!(matches!(ok(src), SrsValue::Integer(3)) || ok(src).to_string() == "3");
+}
+
+#[test]
 fn mutually_tail_recursive_procedures_handle_one_million_calls() {
     let src = "(define (my-even? n) (if (= n 0) #t (my-odd? (- n 1))))
                (define (my-odd? n) (if (= n 0) #f (my-even? (- n 1))))
