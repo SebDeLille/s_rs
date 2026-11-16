@@ -347,6 +347,26 @@ fn list_predicate_and_list_tail_handle_lists_and_improper_tails() {
 }
 
 #[test]
+fn list_index_returns_first_matching_index_or_false() {
+    assert!(matches!(
+        eval_src("(list-index even? '(1 3 4 5))"),
+        SrsValue::Integer(2)
+    ));
+    assert!(matches!(
+        eval_src("(list-index even? '(1 3 5))"),
+        SrsValue::Boolean(false)
+    ));
+    assert!(matches!(
+        eval_src("(list-index even? '())"),
+        SrsValue::Boolean(false)
+    ));
+    assert!(matches!(
+        eval_src("(list-index (lambda (x) (equal? x \"b\")) '(\"a\" \"b\"))"),
+        SrsValue::Integer(1)
+    ));
+}
+
+#[test]
 fn eqv_and_equal_compare_values_at_their_expected_depth() {
     assert!(matches!(eval_src("(eqv? 'a 'a)"), SrsValue::Boolean(true)));
     assert!(matches!(eval_src("(eqv? 'a 'b)"), SrsValue::Boolean(false)));
