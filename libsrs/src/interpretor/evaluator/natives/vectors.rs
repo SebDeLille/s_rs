@@ -3,6 +3,7 @@ use std::rc::Rc;
 
 use crate::types::core::{Env, Native, SrsValue};
 
+use super::super::apply;
 use super::super::util::{list_to_vec, vec_to_list};
 use super::index_from;
 
@@ -70,6 +71,37 @@ pub(super) fn install(env: &Rc<Env>) {
             func: Rc::new(native_vector_fill),
         }),
     );
+    env.define(
+        "vector-map".to_string(),
+        SrsValue::Native(Native {
+            name: "vector-map",
+            func: Rc::new(native_vector_map),
+        }),
+    );
+}
+
+/// `(vector-map proc vector1 vector2 ...)`: applies `proc` element-wise and
+/// returns a new vector of the results, stopping at the shortest vector.
+fn native_vector_map(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [] | [_] => Err("not enough arguments to vector-map".to_string()),
+        [proc, vectors @ ..] => {
+            let mut items = Vec::with_capacity(vectors.len());
+            for v in vectors {
+                match v {
+                    SrsValue::Vector(vec) => items.push(vec.borrow().clone()),
+                    _ => return Err("vector-map: expected a vector".to_string()),
+                }
+            }
+            let len = items.iter().map(Vec::len).min().unwrap_or(0);
+            let mut results = Vec::with_capacity(len);
+            for i in 0..len {
+                let call_args: Vec<SrsValue> = items.iter().map(|v| v[i].clone()).collect();
+                results.push(apply(proc, &call_args).map_err(|e| e.to_string())?);
+            }
+            Ok(SrsValue::Vector(Rc::new(RefCell::new(results))))
+        }
+    }
 }
 
 /// `(vector obj ...)`: allocates a fresh mutable vector containing `obj ...`.

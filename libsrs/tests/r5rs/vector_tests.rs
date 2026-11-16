@@ -133,3 +133,17 @@ fn vector_fill_sets_every_element() {
     let items = as_vec(&eval_src(src));
     assert!(items.iter().all(|v| matches!(v, SrsValue::Integer(7))));
 }
+
+#[test]
+fn vector_map_applies_proc_to_each_element() {
+    let items = as_vec(&eval_src("(vector-map (lambda (x) (* x x)) (vector 1 2 3))"));
+    assert_eq!(items.len(), 3);
+    assert!(matches!(items[2], SrsValue::Integer(9)));
+}
+
+#[test]
+fn vector_map_multiple_vectors_stops_at_shortest() {
+    let items = as_vec(&eval_src("(vector-map + (vector 1 2 3) (vector 10 20))"));
+    assert_eq!(items.len(), 2);
+    assert!(matches!(items[1], SrsValue::Integer(22)));
+}
