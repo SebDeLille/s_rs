@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::types::core::{Env, Lambda, SrsValue};
+use crate::types::core::{Env, Lambda, PromiseState, SrsValue};
 
 use super::util::{is_truthy, list_to_vec};
 use super::{EvalControl, EvalError, EvalErrorKind, apply_tail, err, eval};
@@ -22,7 +22,8 @@ pub(super) fn eval_combination(expr: &SrsValue, env: &Rc<Env>) -> Result<EvalCon
             "lambda" => return eval_lambda(&items[1..], env).map(EvalControl::Value),
             "let" => return eval_let_tail(&items[1..], env),
             "let*" => return eval_let_star_tail(&items[1..], env),
-            "letrec" => return eval_letrec_tail(&items[1..], env),
+            "letrec" | "letrec*" => return eval_letrec_tail(&items[1..], env),
+            "delay" => return eval_delay(&items[1..], env).map(EvalControl::Value),
             "cond" => return eval_cond_tail(&items[1..], env),
             "case" => return eval_case_tail(&items[1..], env),
             "and" => return eval_and_tail(&items[1..], env),
@@ -163,6 +164,17 @@ fn eval_letrec_tail(args: &[SrsValue], env: &Rc<Env>) -> Result<EvalControl, Eva
             eval_body_tail(body, &let_env)
         }
         _ => err(EvalErrorKind::NotEnoughArguments),
+    }
+}
+
+/// Handles `(delay <expr>)`, creating an unforced promise.
+fn eval_delay(args: &[SrsValue], env: &Rc<Env>) -> Result<SrsValue, EvalError> {
+    match args {
+        [expr] => Ok(SrsValue::Promise(Rc::new(RefCell::new(
+            PromiseState::Delayed(vec![expr.clone()], env.clone()),
+        )))),
+        [] => err(EvalErrorKind::NotEnoughArguments),
+        _ => err(EvalErrorKind::TooManyArguments),
     }
 }
 

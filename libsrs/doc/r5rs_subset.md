@@ -15,6 +15,8 @@ Dispatch dans `interpretor/evaluator/special_forms.rs::eval_combination`.
 | `let` | ✅ | formes ordinaire et nommée (named let) |
 | `let*` | ✅ | |
 | `letrec` | ✅ | initialisateurs évalués dans l'environnement contenant tous les noms |
+| `letrec*` | ✅ | initialisation séquentielle, même implémentation que `letrec` |
+| `delay` | ✅ | `(delay expr)` crée une promesse ; évaluée par `force` |
 | `do` | ✅ | |
 | `if` | ✅ | |
 | `cond` | ✅ | clauses `else`, clauses sans action et destinataires `=>` |
@@ -29,14 +31,12 @@ Dispatch dans `interpretor/evaluator/special_forms.rs::eval_combination`.
 
 ### Non implémentées
 
-`letrec*`, `define-syntax`/`syntax-rules`/`let-syntax`, `delay`/`force`,
+`define-syntax`/`syntax-rules`/`let-syntax`,
 `call-with-current-continuation`/`call/cc`.
 
 `dynamic-wind` est implémenté comme une native, mais de façon limitée (voir
 section [Contrôle](#contrôle)).
 
-> Le type `Promise` existe dans `types/core.rs` mais n'est utilisé par aucune
-> primitive : `delay`/`force` ne sont pas fonctionnels.
 
 ## Procédures natives
 
@@ -137,6 +137,11 @@ re-propager l'erreur.
 Limitation : sans `call/cc`, il n'y a pas de ré-entrance possible dans `thunk`
 après l'exécution de `after` (pas de continuation capturable et invocable).
 
+Promesses : `force` évalue une promesse créée par `delay` une seule fois et
+mémorise le résultat (un argument qui n'est pas une promesse est retourné
+tel quel). `make-promise` (promesse déjà forcée) et `promise?` sont aussi
+disponibles.
+
 ### Entrées/sorties (`natives/io.rs`)
 
 `display` `newline` `write-char` `write-string` `read-char` `peek-char`
@@ -198,7 +203,7 @@ Pas de nombres complexes.
   `reverse`, `pair?`, `list?`, `list-tail`, `list-index`, `for-each`, recherche et égalité
 - `procedure_tests.rs` : `lambda`, application, `let`, `let*`
 - `evaluator/tests.rs` : formes spéciales `cond`, `case`, `and`, `or`,
-  `letrec` et `let` nommé
+  `letrec`, `letrec*`, `delay`/`force` et `let` nommé
 - `vector_tests.rs` : `vector`, `vector?`, `make-vector`, `vector-length`,
   `vector-ref`, `vector-set!`, `vector->list`, `list->vector`, `vector-fill!`,
   `vector-map`, `vector-for-each`
