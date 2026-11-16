@@ -82,9 +82,9 @@ Absents : `set-car!`, `set-cdr!`.
 ### Vecteurs (`natives/vectors.rs`)
 
 `vector` `make-vector` `vector?` `vector-length` `vector-ref` `vector-set!`
-`vector->list` `list->vector` `vector-fill!`
+`vector->list` `list->vector` `vector-fill!` `vector-map`
 
-Absents : `vector-map`, `vector-for-each`, `vector-copy`.
+Absents : `vector-for-each`, `vector-copy`.
 
 ### Chaînes (`natives/strings.rs`)
 
@@ -187,7 +187,8 @@ Pas de nombres complexes.
 - `evaluator/tests.rs` : formes spéciales `cond`, `case`, `and`, `or`,
   `letrec` et `let` nommé
 - `vector_tests.rs` : `vector`, `vector?`, `make-vector`, `vector-length`,
-  `vector-ref`, `vector-set!`, `vector->list`, `list->vector`, `vector-fill!`
+  `vector-ref`, `vector-set!`, `vector->list`, `list->vector`, `vector-fill!`,
+  `vector-map`
 - `string_tests.rs` : prédicats, conversions et recherche string/char,
   `substring`, `string-append`, `string-index`, `string-split`, `string-join`,
   `number->string`,
