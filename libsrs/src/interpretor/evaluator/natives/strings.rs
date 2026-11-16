@@ -71,6 +71,13 @@ pub(super) fn install(env: &Rc<Env>) {
         }),
     );
     env.define(
+        "string-search-forward".to_string(),
+        SrsValue::Native(Native {
+            name: "string-search-forward",
+            func: Rc::new(native_string_search_forward),
+        }),
+    );
+    env.define(
         "string-split".to_string(),
         SrsValue::Native(Native {
             name: "string-split",
@@ -326,6 +333,40 @@ fn native_string_index(args: &[SrsValue]) -> Result<SrsValue, String> {
         [_, _] => Err("wrong type: expected string to string-index".to_string()),
         [] | [_] => Err("not enough arguments to string-index".to_string()),
         _ => Err("too many arguments to string-index".to_string()),
+    }
+}
+
+/// `(string-search-forward pattern string start)`: returns the character
+/// offset of the first occurrence of `pattern` at or after `start`, or `#f`.
+fn native_string_search_forward(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [
+            SrsValue::String(pattern),
+            SrsValue::String(text),
+            SrsValue::Integer(start),
+        ] => {
+            if *start < 0 {
+                return Err("string-search-forward: negative start".to_string());
+            }
+            let pattern: Vec<char> = pattern.borrow().chars().collect();
+            let text: Vec<char> = text.borrow().chars().collect();
+            let start = *start as usize;
+            if start > text.len() {
+                return Err("string-search-forward: start out of range".to_string());
+            }
+            let found = (start..=text.len().saturating_sub(pattern.len())).find(|&i| {
+                i + pattern.len() <= text.len() && text[i..i + pattern.len()] == pattern[..]
+            });
+            Ok(found
+                .map(|index| SrsValue::Integer(index as i64))
+                .unwrap_or(SrsValue::Boolean(false)))
+        }
+        [SrsValue::String(_), SrsValue::String(_), _] => {
+            Err("wrong type: expected integer to string-search-forward".to_string())
+        }
+        [_, _, _] => Err("wrong type: expected string to string-search-forward".to_string()),
+        a if a.len() < 3 => Err("not enough arguments to string-search-forward".to_string()),
+        _ => Err("too many arguments to string-search-forward".to_string()),
     }
 }
 

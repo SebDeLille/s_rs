@@ -89,11 +89,13 @@ Absents : `vector-copy`.
 ### Chaînes (`natives/strings.rs`)
 
 `string?` `string-length` `string-ref` `string=?` `substring` `string-append`
-`list->string` `string->list` `string-index` `string-copy` `number->string`
+`list->string` `string->list` `string-index` `string-search-forward` `string-copy` `number->string`
 `string->number`
 
 `string->list` et `string-copy` acceptent les bornes optionnelles `start` et
 `end`. `string-index` retourne un index de caractère (Unicode) ou `#f`.
+`(string-search-forward pattern string start)` retourne l'index de la
+première occurrence de `pattern` à partir de `start`, ou `#f`.
 `number->string` et `string->number` acceptent les bases 2, 8, 10 et 16 ; les
 nombres flottants sont pris en charge en base 10.
 
