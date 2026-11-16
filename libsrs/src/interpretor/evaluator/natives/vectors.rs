@@ -78,6 +78,36 @@ pub(super) fn install(env: &Rc<Env>) {
             func: Rc::new(native_vector_map),
         }),
     );
+    env.define(
+        "vector-for-each".to_string(),
+        SrsValue::Native(Native {
+            name: "vector-for-each",
+            func: Rc::new(native_vector_for_each),
+        }),
+    );
+}
+
+/// `(vector-for-each proc vector1 vector2 ...)`: applies `proc` element-wise
+/// for its side effects, stopping at the shortest vector.
+fn native_vector_for_each(args: &[SrsValue]) -> Result<SrsValue, String> {
+    match args {
+        [] | [_] => Err("not enough arguments to vector-for-each".to_string()),
+        [proc, vectors @ ..] => {
+            let mut items = Vec::with_capacity(vectors.len());
+            for v in vectors {
+                match v {
+                    SrsValue::Vector(vec) => items.push(vec.borrow().clone()),
+                    _ => return Err("vector-for-each: expected a vector".to_string()),
+                }
+            }
+            let len = items.iter().map(Vec::len).min().unwrap_or(0);
+            for i in 0..len {
+                let call_args: Vec<SrsValue> = items.iter().map(|v| v[i].clone()).collect();
+                apply(proc, &call_args).map_err(|e| e.to_string())?;
+            }
+            Ok(SrsValue::Unspecified)
+        }
+    }
 }
 
 /// `(vector-map proc vector1 vector2 ...)`: applies `proc` element-wise and

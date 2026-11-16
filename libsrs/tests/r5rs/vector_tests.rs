@@ -147,3 +147,15 @@ fn vector_map_multiple_vectors_stops_at_shortest() {
     assert_eq!(items.len(), 2);
     assert!(matches!(items[1], SrsValue::Integer(22)));
 }
+
+#[test]
+fn vector_for_each_runs_proc_for_side_effects() {
+    let src = "(define n 0) (vector-for-each (lambda (x) (set! n (+ n x))) (vector 1 2 3)) n";
+    assert!(matches!(eval_src(src), SrsValue::Integer(6)));
+}
+
+#[test]
+fn vector_for_each_multiple_vectors_stops_at_shortest() {
+    let src = "(define n 0) (vector-for-each (lambda (a b) (set! n (+ n a b))) (vector 1 2 3) (vector 10 20)) n";
+    assert!(matches!(eval_src(src), SrsValue::Integer(33)));
+}
